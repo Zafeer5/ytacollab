@@ -54,16 +54,21 @@ create table if not exists public.roles (
 );
 
 -- ------------------------------------------------------------------------------
--- 5. ROLE PROMPTS TABLE
+-- 5. ROLE PROMPTS TABLE (Channel-specific and role-specific prompt templates)
 -- ------------------------------------------------------------------------------
 create table if not exists public.role_prompts (
     id uuid primary key default gen_random_uuid(),
+    channel_id uuid references public.channels(id) on delete cascade,
     role_id uuid references public.roles(id) on delete cascade not null,
     label text default 'Prompt' not null,
     prompt_text text not null,
     sort_order integer default 0 not null,
     created_at timestamptz default now() not null
 );
+
+-- Migration helper for existing deployments:
+alter table public.role_prompts add column if not exists channel_id uuid references public.channels(id) on delete cascade;
+create index if not exists idx_role_prompts_channel on public.role_prompts(channel_id);
 
 -- ------------------------------------------------------------------------------
 -- 6. MEMBER ROLES JUNCTION TABLE (Many-to-Many)

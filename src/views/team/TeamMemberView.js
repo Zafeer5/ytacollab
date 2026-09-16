@@ -27,8 +27,20 @@ export function renderTeamMemberView(container, navigate) {
   let selectedVideoNum = sessionStorage.getItem('yta_team_video_num') || '';
 
   function renderPromptsBox(roleName) {
-    const prompts = store.getPromptsForRole(roleName);
-    if (!prompts || prompts.length === 0) return '';
+    const prompts = store.getPromptsForRole(roleName, selectedChannelId);
+    const selectedChannel = store.getState().channels?.find((c) => c.id === selectedChannelId);
+    const channelLabel = selectedChannel ? selectedChannel.name : 'Channel';
+
+    if (!prompts || prompts.length === 0) {
+      return `
+        <div class="prompts-container" style="padding: 8px 12px; margin-bottom: 10px; border: 1px dashed var(--border); border-radius: var(--radius); background: rgba(255,255,255,0.01);">
+          <div style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
+            <span>ℹ️</span>
+            <span>No ${roleName} prompts configured for ${channelLabel} yet.</span>
+          </div>
+        </div>
+      `;
+    }
 
     const itemsHtml = prompts
       .map(
@@ -52,7 +64,7 @@ export function renderTeamMemberView(container, navigate) {
     return `
       <div class="prompts-container" style="max-height: 220px; overflow-y: auto;">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-          <span class="section-label" style="margin-bottom: 0;">Prompts (provided by admin):</span>
+          <span class="section-label" style="margin-bottom: 0;">Prompts for ${channelLabel}:</span>
           <span class="helper-text" style="font-size: 11px;">Scroll or click Expand</span>
         </div>
         ${itemsHtml}
@@ -150,13 +162,62 @@ export function renderTeamMemberView(container, navigate) {
 
     // If team member has not chosen channel and video, show clean guidance
     if (!currentVideo) {
+      const selectedChannel = channels.find((c) => c.id === selectedChannelId);
+      const channelName = selectedChannel ? selectedChannel.name : '';
+
+      let channelPromptsPreview = '';
+      if (selectedChannelId && assignedRoles.length > 0) {
+        const assignedPrompts = assignedRoles.flatMap((r) => {
+          const pList = store.getPromptsForRole(r, selectedChannelId);
+          return pList.map((p) => ({ ...p, roleName: r }));
+        });
+
+        if (assignedPrompts.length > 0) {
+          channelPromptsPreview = `
+            <div style="margin-top: 20px; text-align: left;">
+              <h4 style="margin-bottom: 10px; font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                <span>📺</span> Prompts for <strong>${channelName}</strong> (${assignedPrompts.length} prompt${assignedPrompts.length > 1 ? 's' : ''} for your roles):
+              </h4>
+              <div class="prompts-container" style="max-height: 240px; overflow-y: auto;">
+                ${assignedPrompts.map((p) => `
+                  <div class="prompt-box-item" style="padding: 8px 10px; background-color: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px;">
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="sidebar-tag" style="color: var(--text-primary); border-color: var(--text-primary); font-size: 10px;">${p.roleName}</span>
+                        <span style="font-weight: 600; font-size: 12px; color: var(--text-primary);">${p.label}</span>
+                        <button type="button" class="btn-prompt-toggle" data-prompt-id="${p.id}">Expand</button>
+                      </div>
+                      <button type="button" class="btn btn-secondary btn-sm btn-copy-prompt" data-prompt-text="${encodeURIComponent(p.promptText)}">
+                        Copy Prompt
+                      </button>
+                    </div>
+                    <div class="prompt-scrollable-content" id="prompt-body-${p.id}">${p.promptText}</div>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `;
+        } else {
+          channelPromptsPreview = `
+            <div style="margin-top: 16px; padding: 10px 14px; border: 1px dashed var(--border); border-radius: var(--radius); background: rgba(255,255,255,0.01); text-align: center; font-size: 12px; color: var(--text-muted);">
+              ℹ️ No prompts currently configured for <strong>${channelName}</strong> for your assigned roles.
+            </div>
+          `;
+        }
+      }
+
       taskSectionsHtml = `
-        <div class="card" style="padding: 36px 20px; text-align: center; border: 1px dashed var(--border); border-radius: var(--radius); margin-top: 16px;">
+        <div class="card" style="padding: 30px 20px; text-align: center; border: 1px dashed var(--border); border-radius: var(--radius); margin-top: 16px;">
           <div style="font-size: 32px; margin-bottom: 10px;">🎬</div>
-          <h3 style="margin-bottom: 6px; font-size: 16px; color: var(--text-primary);">No Video Selected</h3>
+          <h3 style="margin-bottom: 6px; font-size: 16px; color: var(--text-primary);">
+            ${!selectedChannelId ? 'No Channel Selected' : 'Select a Video # to Submit Tasks'}
+          </h3>
           <p class="helper-text" style="max-width: 480px; margin: 0 auto;">
-            Please select your YouTube Channel and Video # above to view task guidelines, prompts, and submit your content.
+            ${!selectedChannelId
+              ? 'Please select your YouTube Channel above to view its specific prompts and video list.'
+              : `Channel <strong>${channelName}</strong> is selected. Please select a Video # from the dropdown above to submit content.`}
           </p>
+          ${channelPromptsPreview}
         </div>
       `;
     } else {

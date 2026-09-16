@@ -196,17 +196,49 @@ class SupabaseStore {
         inputType: r.input_type === 'file' ? 'Attach File' : r.input_type === 'number' ? 'Number' : 'Text'
       }));
 
-      // Fetch Role Prompts
-      const { data: promptsData } = await supabase
-        .from('role_prompts')
-        .select('*, roles(name)')
-        .order('sort_order', { ascending: true });
-      this.state.prompts = (promptsData || []).map((p) => ({
-        id: p.id,
-        roleName: p.roles?.name || '',
-        label: p.label || 'Prompt',
-        promptText: p.prompt_text
-      }));
+      // Fetch Role Prompts (with channel relation if available)
+      let promptsData = [];
+      try {
+        const { data, error } = await supabase
+          .from('role_prompts')
+          .select('*, roles(name), channels(name)')
+          .order('sort_order', { ascending: true });
+
+        if (error && (error.code === '42703' || error.message?.includes('channel_id') || error.message?.includes('channels'))) {
+          // Fallback if channel_id column does not exist yet in Supabase
+          const fallback = await supabase
+            .from('role_prompts')
+            .select('*, roles(name)')
+            .order('sort_order', { ascending: true });
+          promptsData = fallback.data || [];
+        } else if (data) {
+          promptsData = data;
+        }
+      } catch (err) {
+        console.warn('Error fetching role_prompts with channel relation, falling back:', err);
+        const fallback = await supabase
+          .from('role_prompts')
+          .select('*, roles(name)')
+          .order('sort_order', { ascending: true });
+        promptsData = fallback.data || [];
+      }
+
+      this.state.prompts = (promptsData || []).map((p) => {
+        const matchedChannel = p.channels?.name
+          ? p.channels.name
+          : p.channel_id
+          ? this.state.channels.find((c) => c.id === p.channel_id)?.name
+          : null;
+
+        return {
+          id: p.id,
+          roleName: p.roles?.name || '',
+          channelId: p.channel_id || null,
+          channelName: matchedChannel || 'All Channels',
+          label: p.label || 'Prompt',
+          promptText: p.prompt_text
+        };
+      });
 
       // Fetch Submissions and map onto videos
       const { data: subData } = await supabase
@@ -556,31 +588,76 @@ class SupabaseStore {
     return true;
   }
 
-  async addRolePrompt(roleName, label, promptText) {
+  async addRolePrompt(channelIdOrRoleName, roleNameOrLabel, labelOrPromptText, maybePromptText) {
+    let channelId = null;
+    let roleName = '';
+    let label = '';
+    let promptText = '';
+
+    if (maybePromptText !== undefined) {
+      // 4-arg signature: addRolePrompt(channelId, roleName, label, promptText)
+      channelId = channelIdOrRoleName;
+      roleName = roleNameOrLabel;
+      label = labelOrPromptText;
+      promptText = maybePromptText;
+    } else {
+      // 3-arg signature: addRolePrompt(roleName, label, promptText)
+      roleName = channelIdOrRoleName;
+      label = roleNameOrLabel;
+      promptText = labelOrPromptText;
+    }
+
     const role = this.state.roles.find((r) => r.name.toLowerCase() === roleName.toLowerCase());
     if (!role) return false;
 
-    const { data, error } = await supabase
+    const payload = {
+      role_id: role.id,
+      label: (label || 'Prompt').trim(),
+      prompt_text: (promptText || '').trim(),
+      sort_order: this.state.prompts.length
+    };
+
+    if (channelId && channelId !== '__all__') {
+      payload.channel_id = channelId;
+    }
+
+    let insertRes = await supabase
       .from('role_prompts')
-      .insert({
-        role_id: role.id,
-        label: label.trim(),
-        prompt_text: promptText.trim(),
-        sort_order: this.state.prompts.length
-      })
+      .insert(payload)
       .select()
       .single();
 
-    if (error) return false;
+    // Fallback if channel_id column does not exist yet in Supabase
+    if (insertRes.error && (insertRes.error.code === '42703' || insertRes.error.message?.includes('channel_id')) && payload.channel_id) {
+      delete payload.channel_id;
+      insertRes = await supabase
+        .from('role_prompts')
+        .insert(payload)
+        .select()
+        .single();
+    }
+
+    if (insertRes.error) {
+      console.error('Failed to add role prompt:', insertRes.error);
+      return false;
+    }
+
+    const data = insertRes.data;
+    const channelObj = (channelId && channelId !== '__all__')
+      ? this.state.channels.find((c) => c.id === channelId)
+      : null;
+    const channelName = channelObj ? channelObj.name : 'All Channels';
 
     await this.addLedgerEntry({
-      action: `added prompt "${label}" for role "${roleName}"`,
+      action: `added prompt "${label}" for role "${roleName}" (${channelName})`,
       task: 'Role Prompts',
+      channelId: channelObj ? channelObj.id : null,
+      channel: channelName,
       fileReference: label
     });
 
     await this.refreshAll();
-    return { id: data.id, roleName, label, promptText };
+    return { id: data.id, roleName, channelId: payload.channel_id || null, channelName, label, promptText };
   }
 
   async deleteRolePrompt(id) {
@@ -590,10 +667,26 @@ class SupabaseStore {
     return true;
   }
 
-  getPromptsForRole(roleName) {
-    return (this.state.prompts || []).filter(
-      (p) => p.roleName.toLowerCase() === roleName.toLowerCase()
+  getPromptsForRole(roleName, channelId = null) {
+    if (!roleName) return [];
+    const rLower = roleName.toLowerCase();
+    const rolePrompts = (this.state.prompts || []).filter(
+      (p) => (p.roleName || '').toLowerCase() === rLower
     );
+
+    if (!channelId) {
+      return rolePrompts;
+    }
+
+    const channelPrompts = rolePrompts.filter((p) => p.channelId === channelId);
+    const globalPrompts = rolePrompts.filter((p) => !p.channelId);
+
+    // Prioritize channel-specific prompts if defined
+    if (channelPrompts.length > 0) {
+      return [...channelPrompts, ...globalPrompts];
+    }
+
+    return globalPrompts;
   }
 
   // --- Team Members & Roles Assignment ---
