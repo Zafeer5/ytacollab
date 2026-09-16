@@ -21,8 +21,19 @@ function formatTimestamp(date = new Date()) {
 class SupabaseStore {
   constructor() {
     this.subscribers = new Set();
+
+    // Fast-cache user profile from localStorage for synchronous route rehydration on refresh
+    let cachedUser = null;
+    try {
+      const raw = localStorage.getItem('yta_active_user');
+      if (raw) cachedUser = JSON.parse(raw);
+    } catch (e) {
+      console.warn('Failed to parse cached user:', e);
+    }
+
     this.state = {
-      currentUser: null,
+      currentUser: cachedUser,
+      isAuthInitialized: false,
       channels: [],
       videos: [],
       roles: [],
@@ -45,9 +56,17 @@ class SupabaseStore {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         await this.loadUserProfile(session.user);
+      } else {
+        this.state.currentUser = null;
+        try {
+          localStorage.removeItem('yta_active_user');
+        } catch (e) {}
       }
     } catch (err) {
       console.warn('Session restoration error:', err);
+    } finally {
+      this.state.isAuthInitialized = true;
+      this.notifySubscribers();
     }
 
     // 2. Initial data fetch
@@ -115,6 +134,9 @@ class SupabaseStore {
         role: profile.is_admin ? 'ADMIN' : 'TEAM_MEMBER',
         assignedRoles: assignedRoles
       };
+      try {
+        localStorage.setItem('yta_active_user', JSON.stringify(this.state.currentUser));
+      } catch (err) {}
     } catch (e) {
       console.warn('Error loading user profile:', e);
       this.state.currentUser = {
@@ -123,6 +145,9 @@ class SupabaseStore {
         role: authUser.email?.includes('admin') ? 'ADMIN' : 'TEAM_MEMBER',
         assignedRoles: []
       };
+      try {
+        localStorage.setItem('yta_active_user', JSON.stringify(this.state.currentUser));
+      } catch (err) {}
     }
   }
 
@@ -352,8 +377,16 @@ class SupabaseStore {
   }
 
   async logout() {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {}
     this.state.currentUser = null;
+    try {
+      localStorage.removeItem('yta_active_user');
+      sessionStorage.removeItem('yta_team_channel_id');
+      sessionStorage.removeItem('yta_team_video_num');
+      sessionStorage.removeItem('yta_post_login_redirect');
+    } catch (e) {}
     this.notifySubscribers();
   }
 

@@ -31,22 +31,39 @@ function navigate(targetHash) {
 function handleRoute() {
   const state = store.getState();
   const user = state.currentUser;
+  const isAuthReady = state.isAuthInitialized;
   let hash = getNormalizedHash();
 
-  // Redirect logic for unauthenticated users
+  // If user is not yet known AND auth session check is still initializing,
+  // do NOT redirect to landing or pollute browser history!
+  if (!user && !isAuthReady) {
+    appEl.innerHTML = `
+      <div style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; background-color: var(--bg); color: var(--text-primary);">
+        <div style="width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+        <div style="font-size: 13px; color: var(--text-secondary); font-weight: 500;">Restoring session...</div>
+      </div>
+    `;
+    return;
+  }
+
+  // Redirect logic for confirmed unauthenticated users
   if (!user) {
     if (hash !== '#/login' && hash !== '#/landing' && hash !== '#/') {
+      if (hash && hash.length > 2) {
+        sessionStorage.setItem('yta_post_login_redirect', hash);
+      }
       hash = '#/landing';
       window.location.hash = hash;
     }
   } else if (user.role === 'ADMIN') {
-    // If admin is on landing/login/empty, redirect to production table
+    // If admin lands on public or team routes, redirect to production table
     if (!hash || hash === '#/' || hash === '#/landing' || hash === '#/login' || hash === '#/team') {
       hash = '#/admin/table';
       window.location.hash = hash;
     }
+    // Deep-links (e.g. #/admin/roles, #/admin/channels) are preserved exactly!
   } else if (user.role === 'TEAM_MEMBER') {
-    // If team member tries to access admin route or landing/login, redirect to team view
+    // If team member is on admin or landing/login routes, redirect to team view
     if (!hash || hash.startsWith('#/admin') || hash === '#/' || hash === '#/landing' || hash === '#/login') {
       hash = '#/team';
       window.location.hash = hash;

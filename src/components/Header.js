@@ -31,9 +31,6 @@ export function renderHeader(container, currentView, navigate) {
 
     rightContent = `
       <div class="nav-links" style="align-items: center; gap: 10px;">
-        <button id="btn-reset-clean" class="nav-btn" style="font-size: 11px; padding: 4px 8px;" title="Reset all data to empty state for live testing">
-          Reset Clean State
-        </button>
         <span class="helper-text" style="color: var(--text-primary); font-weight: 600;">Admin</span>
       </div>
     `;
@@ -77,15 +74,7 @@ export function renderHeader(container, currentView, navigate) {
     });
   }
 
-  const resetBtn = container.querySelector('#btn-reset-clean');
-  if (resetBtn) {
-    resetBtn.addEventListener('click', () => {
-      if (confirm('Clear all data to a 100% clean state for testing?')) {
-        store.resetToCleanState();
-        navigate('#/admin/table');
-      }
-    });
-  }
+
 
   const loginBtn = container.querySelector('#nav-login-btn');
   if (loginBtn) {

@@ -54,8 +54,11 @@ export function renderLoginPage(container, navigate) {
     try {
       const result = await store.login(username, password);
       if (result.success) {
+        const postLoginRedirect = sessionStorage.getItem('yta_post_login_redirect');
+        sessionStorage.removeItem('yta_post_login_redirect');
+
         if (result.user.role === 'ADMIN') {
-          navigate('#/admin/table');
+          navigate(postLoginRedirect && postLoginRedirect.startsWith('#/admin') ? postLoginRedirect : '#/admin/table');
         } else {
           navigate('#/team');
         }
