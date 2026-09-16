@@ -117,17 +117,17 @@ export function renderAdminProductionTableView(container, navigate) {
 
         return `
           <tr class="${isRowSelected ? 'row-selected' : ''}">
-            <td style="width: 44px; text-align: center;">
-              <input type="checkbox" class="video-select-check" data-video-id="${video.id}" ${isRowSelected ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;" />
+            <td style="width: 36px; text-align: center; padding: 6px 2px;">
+              <input type="checkbox" class="video-select-check" data-video-id="${video.id}" ${isRowSelected ? 'checked' : ''} style="cursor: pointer; width: 15px; height: 15px;" />
             </td>
-            <td class="sticky-col" style="font-weight: 700; white-space: nowrap; color: var(--text-primary);">Video ${video.videoNumber}</td>
-            <td>${titleContent}</td>
-            <td>${scriptContent}</td>
-            <td>${voContent}</td>
-            <td>${thumbContent}</td>
-            <td>${metaContent}</td>
-            <td style="text-align: center;">
-              <input type="checkbox" class="video-status-check" data-video-id="${video.id}" ${video.status ? 'checked' : ''} />
+            <td style="width: 68px; font-weight: 700; text-align: center; color: var(--text-primary); padding: 6px 4px;">Video ${video.videoNumber}</td>
+            <td style="width: 22%;">${titleContent}</td>
+            <td style="width: 21%;">${scriptContent}</td>
+            <td style="width: 14%;">${voContent}</td>
+            <td style="width: 14%;">${thumbContent}</td>
+            <td style="width: 21%;">${metaContent}</td>
+            <td style="width: 54px; text-align: center; padding: 6px 2px;">
+              <input type="checkbox" class="video-status-check" data-video-id="${video.id}" ${video.status ? 'checked' : ''} style="cursor: pointer; width: 15px; height: 15px;" />
             </td>
           </tr>
         `;
@@ -172,20 +172,20 @@ export function renderAdminProductionTableView(container, navigate) {
             </div>
           </div>
 
-          <div class="scrollable-container master-table-container">
+          <div class="master-table-container">
             <table class="data-table master-table">
               <thead>
                 <tr>
-                  <th style="width: 44px; text-align: center;">
-                    <input type="checkbox" id="check-all-videos" ${areAllSelected ? 'checked' : ''} title="Select / Deselect all" style="cursor: pointer; width: 16px; height: 16px;" />
+                  <th style="width: 36px; text-align: center; padding: 6px 2px;">
+                    <input type="checkbox" id="check-all-videos" ${areAllSelected ? 'checked' : ''} title="Select / Deselect all" style="cursor: pointer; width: 15px; height: 15px;" />
                   </th>
-                  <th class="sticky-col">Video #</th>
-                  <th style="min-width: 200px;">Titles (copyable)</th>
-                  <th style="min-width: 220px;">Script (copyable)</th>
-                  <th style="min-width: 150px;">voiceover (downloadable)</th>
-                  <th style="min-width: 150px;">thumbnail (downloadable)</th>
-                  <th style="min-width: 220px;">Meta Info (copyable)</th>
-                  <th style="text-align: center; width: 80px;">Status</th>
+                  <th style="width: 68px; text-align: center; padding: 6px 4px;">Video #</th>
+                  <th style="width: 22%;">Titles (copyable)</th>
+                  <th style="width: 21%;">Script (copyable)</th>
+                  <th style="width: 14%;">voiceover (downloadable)</th>
+                  <th style="width: 14%;">thumbnail (downloadable)</th>
+                  <th style="width: 21%;">Meta Info (copyable)</th>
+                  <th style="width: 54px; text-align: center; padding: 6px 2px;">Status</th>
                 </tr>
               </thead>
               <tbody>

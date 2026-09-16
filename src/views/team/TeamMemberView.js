@@ -25,7 +25,6 @@ function clearTeamSession() {
 export function renderTeamMemberView(container, navigate) {
   let selectedChannelId = sessionStorage.getItem('yta_team_channel_id') || '';
   let selectedVideoNum = sessionStorage.getItem('yta_team_video_num') || '';
-  let isNotifOpen = false;
 
   function renderPromptsBox(roleName) {
     const prompts = store.getPromptsForRole(roleName);
@@ -491,49 +490,6 @@ export function renderTeamMemberView(container, navigate) {
               <span class="section-label">Team_member_name</span>
               <div style="font-size: 16px; font-weight: 700;">${user.username}</div>
             </div>
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <!-- Notification Bell with Dropdown Popover -->
-              <div class="notif-wrapper" id="team-notif-wrapper">
-                <button type="button" id="btn-team-notif-bell" class="btn-notif-bell" aria-label="Notifications" title="Notifications">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
-                    <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
-                  </svg>
-                  ${myNotifications.length > 0 ? `<span class="notif-badge">${myNotifications.length}</span>` : ''}
-                </button>
-
-                <div id="notif-dropdown-popover" class="notif-dropdown-popover" style="${isNotifOpen ? '' : 'display: none;'}">
-                  <div class="notif-popover-header">
-                    <div class="notif-popover-title">
-                      <span>Notifications</span>
-                      ${myNotifications.length > 0 ? `<span style="font-size: 11px; background: rgba(239,68,68,0.2); color: #f87171; padding: 1px 6px; border-radius: 10px;">${myNotifications.length}</span>` : ''}
-                    </div>
-                    ${myNotifications.length > 0 ? `<button type="button" id="btn-clear-all-notifs" class="btn-notif-clear-all">Clear all</button>` : ''}
-                  </div>
-                  <div class="notif-popover-body">
-                    ${myNotifications.length === 0 ? `
-                      <div class="notif-empty-state">
-                        <div style="font-size: 26px; margin-bottom: 6px;">🔔</div>
-                        <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 2px;">No notifications</div>
-                        <div class="helper-text" style="font-size: 11px;">Notifications sent by admin will appear here</div>
-                      </div>
-                    ` : `
-                      ${myNotifications.map((n) => `
-                        <div class="notif-card-item">
-                          <div style="flex: 1; min-width: 0;">
-                            <div class="notif-card-msg">${n.message}</div>
-                            <div class="notif-card-time">${n.timestamp}</div>
-                          </div>
-                          <button type="button" class="btn-dismiss-notif" data-notif-id="${n.id}" title="Dismiss">✕</button>
-                        </div>
-                      `).join('')}
-                    `}
-                  </div>
-                </div>
-              </div>
-
-              <button id="btn-member-logout" class="btn btn-danger btn-sm">Logout</button>
-            </div>
           </div>
 
           <!-- Channel & Video Selection (User selects manually) -->
@@ -576,61 +532,6 @@ export function renderTeamMemberView(container, navigate) {
         </div>
       </div>
     `;
-
-    // Notification dropdown handlers
-    const notifBellBtn = container.querySelector('#btn-team-notif-bell');
-    if (notifBellBtn) {
-      notifBellBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        isNotifOpen = !isNotifOpen;
-        const popover = container.querySelector('#notif-dropdown-popover');
-        if (popover) {
-          popover.style.display = isNotifOpen ? 'block' : 'none';
-        }
-      });
-    }
-
-    const clearAllNotifsBtn = container.querySelector('#btn-clear-all-notifs');
-    if (clearAllNotifsBtn) {
-      clearAllNotifsBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        clearAllNotifsBtn.textContent = 'Clearing...';
-        await store.clearAllMyNotifications(user.id);
-        render();
-      });
-    }
-
-    container.querySelectorAll('.btn-dismiss-notif').forEach((btn) => {
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const notifId = btn.dataset.notifId;
-        btn.textContent = '...';
-        await store.clearNotification(notifId);
-        render();
-      });
-    });
-
-    const closeNotifOnClickOutside = (e) => {
-      const wrapper = container.querySelector('#team-notif-wrapper');
-      if (isNotifOpen && wrapper && !wrapper.contains(e.target)) {
-        isNotifOpen = false;
-        const popover = container.querySelector('#notif-dropdown-popover');
-        if (popover) popover.style.display = 'none';
-      }
-    };
-    document.addEventListener('click', closeNotifOnClickOutside, { once: true });
-
-    // Handlers
-    const logoutBtn = container.querySelector('#btn-member-logout');
-    if (logoutBtn) {
-      logoutBtn.addEventListener('click', async () => {
-        clearTeamSession();
-        await store.logout();
-        sessionStorage.removeItem('yta_team_channel_id');
-        sessionStorage.removeItem('yta_team_video_num');
-        navigate('#/landing');
-      });
-    }
 
     const chanSelect = container.querySelector('#member-channel-select');
     if (chanSelect) {

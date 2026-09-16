@@ -858,6 +858,88 @@ input[type="checkbox"] {
 }
 
 /* ==========================================================================
+   MASTER PRODUCTION TABLE (ADMIN VIEW) - NO INTERNAL SCROLLBARS
+   ========================================================================== */
+.master-table-container {
+  overflow: visible !important;
+  max-height: none !important;
+  background-color: var(--surface);
+  width: 100%;
+}
+
+.data-table.master-table {
+  width: 100% !important;
+  table-layout: fixed !important;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.data-table.master-table th,
+.data-table.master-table td {
+  padding: 8px 6px !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.data-table.master-table th {
+  position: static !important;
+  background-color: #15151a;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.data-table.master-table td.sticky-col,
+.data-table.master-table th.sticky-col {
+  position: static !important;
+  border-right: 1px solid var(--border);
+}
+
+.master-table .cell-text-copy {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.master-table .cell-text-copy .truncate-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+}
+
+.master-table .cell-text-copy .btn-copy {
+  flex-shrink: 0;
+  padding: 2px 5px;
+  font-size: 10px;
+  height: 20px;
+  line-height: 1;
+}
+
+.master-table .btn-download {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  padding: 2px 6px;
+  vertical-align: middle;
+}
+
+.master-table .badge-pending {
+  padding: 2px 4px;
+  font-size: 10px;
+}
+
+/* ==========================================================================
    NOTIFICATION POPOVER (TEAM MEMBER VIEW)
    ========================================================================== */
 .notif-wrapper {
@@ -870,8 +952,8 @@ input[type="checkbox"] {
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text-primary);
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border-radius: var(--radius);
   display: inline-flex;
   align-items: center;
@@ -892,20 +974,20 @@ input[type="checkbox"] {
 
 .notif-badge {
   position: absolute;
-  top: -5px;
-  right: -5px;
+  top: -4px;
+  right: -4px;
   background: #ef4444;
   color: #ffffff;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   line-height: 1;
-  min-width: 17px;
-  height: 17px;
-  border-radius: 9px;
+  min-width: 15px;
+  height: 15px;
+  border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 4px;
+  padding: 0 3px;
   border: 2px solid var(--bg);
   box-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
   animation: notifPulse 2s infinite ease-in-out;
@@ -918,14 +1000,14 @@ input[type="checkbox"] {
 
 .notif-dropdown-popover {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 6px);
   right: 0;
-  width: 320px;
-  max-width: calc(100vw - 32px);
+  width: 280px;
+  max-width: calc(100vw - 20px);
   background: #141417;
   border: 1px solid var(--border);
   border-radius: 6px;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.75);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.85);
   z-index: 1000;
   overflow: hidden;
   animation: notifFadeIn 0.18s ease-out;
@@ -934,7 +1016,7 @@ input[type="checkbox"] {
 @keyframes notifFadeIn {
   from {
     opacity: 0;
-    transform: translateY(-6px);
+    transform: translateY(-5px);
   }
   to {
     opacity: 1;
@@ -946,18 +1028,18 @@ input[type="checkbox"] {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.03);
 }
 
 .notif-popover-title {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text-primary);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
 }
 
 .btn-notif-clear-all {
@@ -966,7 +1048,7 @@ input[type="checkbox"] {
   color: var(--text-muted);
   font-size: 11px;
   cursor: pointer;
-  padding: 2px 6px;
+  padding: 2px 4px;
   border-radius: 3px;
   transition: color 0.15s;
 }
@@ -977,15 +1059,15 @@ input[type="checkbox"] {
 }
 
 .notif-popover-body {
-  max-height: 320px;
+  max-height: 240px;
   overflow-y: auto;
   scrollbar-width: thin;
 }
 
 .notif-card-item {
   display: flex;
-  gap: 10px;
-  padding: 11px 14px;
+  gap: 8px;
+  padding: 8px 12px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   align-items: flex-start;
   transition: background 0.15s;
@@ -996,25 +1078,25 @@ input[type="checkbox"] {
 }
 
 .notif-card-msg {
-  font-size: 12px;
-  line-height: 1.4;
+  font-size: 11.5px;
+  line-height: 1.35;
   color: var(--text-primary);
   word-break: break-word;
 }
 
 .notif-card-time {
-  font-size: 10px;
+  font-size: 9.5px;
   color: var(--text-muted);
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .btn-dismiss-notif {
   background: transparent;
   border: none;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
-  padding: 2px 6px;
+  padding: 1px 4px;
   border-radius: 3px;
   line-height: 1;
   transition: all 0.15s;
@@ -1026,10 +1108,10 @@ input[type="checkbox"] {
 }
 
 .notif-empty-state {
-  padding: 30px 16px;
+  padding: 24px 14px;
   text-align: center;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11.5px;
 }
 
 /* ==========================================================================
@@ -1133,6 +1215,18 @@ tr.row-selected td {
   .header-container {
     padding: 0 4px;
   }
+
+  /* Notification popover on mobile: anchor nicely below header, prevent offscreen overflow */
+  .notif-dropdown-popover {
+    position: fixed;
+    top: 54px;
+    right: 10px;
+    left: auto;
+    width: min(290px, calc(100vw - 20px));
+    max-width: calc(100vw - 20px);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.95);
+  }
 }
+
 
 
