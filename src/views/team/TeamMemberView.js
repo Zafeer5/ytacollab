@@ -139,6 +139,7 @@ export function renderTeamMemberView(container, navigate) {
     const hasMetaRole = assignedRoles.some((r) => r.toLowerCase() === 'meta info' || r.toLowerCase() === 'meta');
     const hasScriptRole = assignedRoles.some((r) => r.toLowerCase() === 'script');
     const hasVoiceoverRole = assignedRoles.some((r) => r.toLowerCase() === 'voiceover');
+    const hasAvailableScript = Boolean(currentVideo?.script && currentVideo.script.trim());
 
     const standardRoles = ['thumbnail', 'meta info', 'meta', 'script', 'voiceover'];
     const genericRoles = assignedRoles.filter(
@@ -511,10 +512,36 @@ export function renderTeamMemberView(container, navigate) {
 
           <!-- Auto-fetched Title from DB -->
           <div>
-            <span class="section-label">Title (auto-fetched from DB according to channel + video #)</span>
-            <div style="font-size: 15px; font-weight: 600; padding: 10px 12px; background-color: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-primary);">
-              ${autoFetchedTitle}
+            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+              <span class="section-label" style="margin-bottom: 0;">Title (auto-fetched from DB according to channel + video #)</span>
             </div>
+            <div style="position: relative; font-size: 15px; font-weight: 600; padding: 10px 14px; padding-right: ${currentVideo && currentVideo.title ? '88px' : '14px'}; background-color: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-primary); min-height: 46px; display: flex; align-items: center; word-break: break-word;">
+              <span>${autoFetchedTitle}</span>
+              ${currentVideo && currentVideo.title ? `
+                <button type="button" id="btn-copy-fetched-title" class="btn btn-secondary btn-sm" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 3px 10px; font-size: 11px; height: 26px; flex-shrink: 0;" title="Copy title to clipboard">
+                  Copy
+                </button>
+              ` : ''}
+            </div>
+
+            <!-- Under Title Box: Meta Info Role Script Copy Action / Status -->
+            ${hasMetaRole && currentVideo ? `
+              <div style="display: flex; justify-content: flex-end; align-items: center; margin-top: 8px;">
+                ${hasAvailableScript ? `
+                  <button type="button" id="btn-copy-fetched-script" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 5px 12px;" title="Copy script for this video">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    <span>Copy Script</span>
+                  </button>
+                ` : `
+                  <span style="font-size: 12px; color: var(--text-muted); font-style: italic; padding: 4px 8px; background: rgba(255,255,255,0.02); border: 1px dashed var(--border); border-radius: var(--radius);">
+                    no script available
+                  </span>
+                `}
+              </div>
+            ` : ''}
           </div>
         </div>
 
@@ -532,6 +559,40 @@ export function renderTeamMemberView(container, navigate) {
         </div>
       </div>
     `;
+
+    const copyTitleBtn = container.querySelector('#btn-copy-fetched-title');
+    if (copyTitleBtn && currentVideo?.title) {
+      copyTitleBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        try {
+          await navigator.clipboard.writeText(currentVideo.title);
+          const original = copyTitleBtn.textContent;
+          copyTitleBtn.textContent = 'Copied!';
+          setTimeout(() => {
+            if (copyTitleBtn) copyTitleBtn.textContent = original;
+          }, 1500);
+        } catch (err) {
+          console.error('Failed to copy title:', err);
+        }
+      });
+    }
+
+    const copyScriptBtn = container.querySelector('#btn-copy-fetched-script');
+    if (copyScriptBtn && currentVideo?.script) {
+      copyScriptBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        try {
+          await navigator.clipboard.writeText(currentVideo.script);
+          const originalHtml = copyScriptBtn.innerHTML;
+          copyScriptBtn.innerHTML = `<span>✓ Copied Script!</span>`;
+          setTimeout(() => {
+            if (copyScriptBtn) copyScriptBtn.innerHTML = originalHtml;
+          }, 1500);
+        } catch (err) {
+          console.error('Failed to copy script:', err);
+        }
+      });
+    }
 
     const chanSelect = container.querySelector('#member-channel-select');
     if (chanSelect) {
