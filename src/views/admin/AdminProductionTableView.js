@@ -2,6 +2,7 @@ import { store } from '../../lib/store.js';
 
 export function renderAdminProductionTableView(container, navigate) {
   let selectedChannelId = localStorage.getItem('yta_selected_channel_id') || '';
+  let selectedVideoIds = new Set();
   let notificationBanner = '';
 
   function render() {
@@ -13,15 +14,19 @@ export function renderAdminProductionTableView(container, navigate) {
       if (!selectedChannelId || !channels.some((c) => c.id === selectedChannelId)) {
         selectedChannelId = channels[0].id;
         localStorage.setItem('yta_selected_channel_id', selectedChannelId);
+        selectedVideoIds.clear();
       }
     } else {
       selectedChannelId = '';
+      selectedVideoIds.clear();
     }
 
     const currentChannel = channels.find((c) => c.id === selectedChannelId);
     const channelVideos = currentChannel
       ? state.videos.filter((v) => v.channelId === selectedChannelId).sort((a, b) => a.videoNumber - b.videoNumber)
       : [];
+
+    const areAllSelected = channelVideos.length > 0 && channelVideos.every((v) => selectedVideoIds.has(v.id));
 
     // Compute stats
     let totalPendingCells = 0;
@@ -47,6 +52,7 @@ export function renderAdminProductionTableView(container, navigate) {
     // Table rows
     const tableRows = channelVideos
       .map((video) => {
+        const isRowSelected = selectedVideoIds.has(video.id);
         const titleStat = store.getCellStatus(video, 'title');
         const scriptStat = store.getCellStatus(video, 'script');
         const voStat = store.getCellStatus(video, 'voiceover');
@@ -110,7 +116,10 @@ export function renderAdminProductionTableView(container, navigate) {
             : '<span class="helper-text">—</span>';
 
         return `
-          <tr>
+          <tr class="${isRowSelected ? 'row-selected' : ''}">
+            <td style="width: 44px; text-align: center;">
+              <input type="checkbox" class="video-select-check" data-video-id="${video.id}" ${isRowSelected ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;" />
+            </td>
             <td class="sticky-col" style="font-weight: 700; white-space: nowrap; color: var(--text-primary);">Video ${video.videoNumber}</td>
             <td>${titleContent}</td>
             <td>${scriptContent}</td>
@@ -154,11 +163,12 @@ export function renderAdminProductionTableView(container, navigate) {
             <div style="display: flex; gap: 16px; align-items: baseline; flex-wrap: wrap;">
               <span style="font-weight: 600; color: var(--text-primary);">Channel: ${currentChannel.name}</span>
               <span class="helper-text">• Total Videos: <strong style="color: var(--text-primary);">${channelVideos.length}</strong></span>
+              <span class="helper-text">• Selected: <strong style="color: var(--text-primary);">${selectedVideoIds.size}</strong></span>
               <span class="helper-text">• Pending Cells: <strong style="color: ${totalPendingCells > 0 ? 'var(--pending-text)' : 'var(--text-primary)'};">${totalPendingCells}</strong></span>
               <span class="helper-text">• Completed: <strong style="color: var(--success-text);">${completedVideosCount} / ${channelVideos.length}</strong></span>
             </div>
             <div class="helper-text">
-              Rule: Empty cells in partially filled rows are marked <code>pending</code>.
+              Rule: Select videos using the leftmost checkbox column to send targeted notifications.
             </div>
           </div>
 
@@ -166,6 +176,9 @@ export function renderAdminProductionTableView(container, navigate) {
             <table class="data-table master-table">
               <thead>
                 <tr>
+                  <th style="width: 44px; text-align: center;">
+                    <input type="checkbox" id="check-all-videos" ${areAllSelected ? 'checked' : ''} title="Select / Deselect all" style="cursor: pointer; width: 16px; height: 16px;" />
+                  </th>
                   <th class="sticky-col">Video #</th>
                   <th style="min-width: 200px;">Titles (copyable)</th>
                   <th style="min-width: 220px;">Script (copyable)</th>
@@ -197,10 +210,13 @@ export function renderAdminProductionTableView(container, navigate) {
             </select>
           </div>
 
-          <div style="display: flex; gap: 10px; align-items: center;">
+          <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
             <button id="btn-send-notifications" class="btn btn-primary" ${channelVideos.length === 0 ? 'disabled' : ''}>
               send notifications
             </button>
+            <span id="select-videos-warning" class="animated-select-videos-alert" style="display: none;">
+              select videos first
+            </span>
           </div>
         </div>
 
@@ -215,18 +231,62 @@ export function renderAdminProductionTableView(container, navigate) {
       chanSelect.addEventListener('change', (e) => {
         selectedChannelId = e.target.value;
         localStorage.setItem('yta_selected_channel_id', selectedChannelId);
+        selectedVideoIds.clear();
         notificationBanner = '';
         render();
       });
     }
 
+    const checkAllCb = container.querySelector('#check-all-videos');
+    if (checkAllCb) {
+      checkAllCb.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          channelVideos.forEach((v) => selectedVideoIds.add(v.id));
+        } else {
+          selectedVideoIds.clear();
+        }
+        const warn = container.querySelector('#select-videos-warning');
+        if (warn) warn.style.display = 'none';
+        render();
+      });
+    }
+
+    container.querySelectorAll('.video-select-check').forEach((cb) => {
+      cb.addEventListener('change', (e) => {
+        const vidId = e.target.dataset.videoId;
+        if (e.target.checked) {
+          selectedVideoIds.add(vidId);
+          const warn = container.querySelector('#select-videos-warning');
+          if (warn) warn.style.display = 'none';
+        } else {
+          selectedVideoIds.delete(vidId);
+        }
+        render();
+      });
+    });
+
     const notifBtn = container.querySelector('#btn-send-notifications');
     if (notifBtn) {
       notifBtn.addEventListener('click', async () => {
         if (!selectedChannelId) return;
+
+        if (selectedVideoIds.size === 0) {
+          const warn = container.querySelector('#select-videos-warning');
+          if (warn) {
+            warn.style.display = 'inline-flex';
+            warn.classList.remove('shake-active');
+            void warn.offsetWidth; // Trigger reflow for animation restart
+            warn.classList.add('shake-active');
+          }
+          return;
+        }
+
+        const warn = container.querySelector('#select-videos-warning');
+        if (warn) warn.style.display = 'none';
+
         notifBtn.disabled = true;
         notifBtn.textContent = 'Sending...';
-        const result = await store.sendPendingNotifications(selectedChannelId);
+        const result = await store.sendPendingNotifications(selectedChannelId, Array.from(selectedVideoIds));
         notificationBanner = result.message;
         notifBtn.disabled = false;
         notifBtn.textContent = 'send notifications';

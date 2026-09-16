@@ -25,8 +25,10 @@ class SupabaseStore {
     // Fast-cache user profile from localStorage for synchronous route rehydration on refresh
     let cachedUser = null;
     try {
-      const raw = localStorage.getItem('yta_active_user');
-      if (raw) cachedUser = JSON.parse(raw);
+      if (typeof localStorage !== 'undefined') {
+        const raw = localStorage.getItem('yta_active_user');
+        if (raw) cachedUser = JSON.parse(raw);
+      }
     } catch (e) {
       console.warn('Failed to parse cached user:', e);
     }
@@ -789,11 +791,19 @@ class SupabaseStore {
   }
 
   // --- Send Notifications ---
-  async sendPendingNotifications(channelId) {
+  async sendPendingNotifications(channelId, selectedVideoIds = null) {
     const chan = this.state.channels.find((c) => c.id === channelId);
-    if (!chan) return { count: 0, recipients: [] };
+    if (!chan) return { count: 0, recipients: [], message: 'Channel not found.' };
 
-    const channelVideos = this.state.videos.filter((v) => v.channelId === channelId);
+    let channelVideos = this.state.videos.filter((v) => v.channelId === channelId);
+    if (selectedVideoIds !== null && Array.isArray(selectedVideoIds)) {
+      channelVideos = channelVideos.filter((v) => selectedVideoIds.includes(v.id));
+    }
+
+    if (channelVideos.length === 0) {
+      return { count: 0, recipients: [], message: 'No matching videos selected.' };
+    }
+
     const pendingTasks = [];
 
     for (const vid of channelVideos) {
@@ -809,7 +819,11 @@ class SupabaseStore {
     }
 
     if (pendingTasks.length === 0) {
-      return { count: 0, recipients: [], message: 'No pending cells found for this channel.' };
+      return {
+        count: 0,
+        recipients: [],
+        message: `No pending cells found in the ${channelVideos.length} selected video(s).`
+      };
     }
 
     const notifiedMembers = new Set();
@@ -837,18 +851,36 @@ class SupabaseStore {
 
     const recipientList = Array.from(notifiedMembers);
     await this.addLedgerEntry({
-      action: `sent notifications for ${pendingTasks.length} pending task(s)`,
+      action: `sent notifications for ${pendingTasks.length} pending task(s) across ${channelVideos.length} selected video(s)`,
       channelId: channelId,
       task: 'Notifications',
-      fileReference: `Notified: ${recipientList.join(', ') || 'No members with matching roles'}`
+      fileReference: `Notified: ${recipientList.join(', ') || 'None'}`
     });
 
     await this.refreshAll();
     return {
       count: pendingTasks.length,
       recipients: recipientList,
-      message: `Notifications sent to ${recipientList.length} member(s) (${recipientList.join(', ') || 'None'}) for ${pendingTasks.length} pending cell(s).`
+      message: `Notifications sent to ${recipientList.length} member(s) (${recipientList.join(', ') || 'None'}) for ${pendingTasks.length} pending task(s) across ${channelVideos.length} video(s).`
     };
+  }
+
+  async clearNotification(notificationId) {
+    const { error } = await supabase.from('notifications').delete().eq('id', notificationId);
+    if (!error) {
+      this.state.notifications = this.state.notifications.filter((n) => n.id !== notificationId);
+      this.notifySubscribers();
+    }
+    return !error;
+  }
+
+  async clearAllMyNotifications(userId) {
+    const { error } = await supabase.from('notifications').delete().eq('recipient_id', userId);
+    if (!error) {
+      this.state.notifications = this.state.notifications.filter((n) => n.recipientId !== userId);
+      this.notifySubscribers();
+    }
+    return !error;
   }
 
   // --- Audit Ledger Logging ---

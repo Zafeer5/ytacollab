@@ -2,6 +2,7 @@ import { store } from '../../lib/store.js';
 
 export function renderAdminHomeView(container, navigate) {
   let selectedChannelId = '';
+  let selectedVideoIds = new Set();
   let notificationBanner = '';
 
   function render() {
@@ -10,6 +11,7 @@ export function renderAdminHomeView(container, navigate) {
 
     if (!selectedChannelId && channels.length > 0) {
       selectedChannelId = channels[0].id;
+      selectedVideoIds.clear();
     }
 
     const currentChannel = channels.find((c) => c.id === selectedChannelId);
@@ -17,6 +19,8 @@ export function renderAdminHomeView(container, navigate) {
 
     // Sort videos by videoNumber
     channelVideos.sort((a, b) => a.videoNumber - b.videoNumber);
+
+    const areAllSelected = channelVideos.length > 0 && channelVideos.every((v) => selectedVideoIds.has(v.id));
 
     // Build channel options
     const channelOptions = channels
@@ -58,6 +62,8 @@ export function renderAdminHomeView(container, navigate) {
     // Build Production Table Rows
     const tableRows = channelVideos
       .map((video) => {
+        const isRowSelected = selectedVideoIds.has(video.id);
+
         // Pending logic checks
         const titleStat = store.getCellStatus(video, 'title');
         const scriptStat = store.getCellStatus(video, 'script');
@@ -122,7 +128,10 @@ export function renderAdminHomeView(container, navigate) {
             : '<span class="helper-text">—</span>';
 
         return `
-          <tr>
+          <tr class="${isRowSelected ? 'row-selected' : ''}">
+            <td style="width: 44px; text-align: center;">
+              <input type="checkbox" class="video-select-check" data-video-id="${video.id}" ${isRowSelected ? 'checked' : ''} style="cursor: pointer; width: 16px; height: 16px;" />
+            </td>
             <td style="font-weight: 600; white-space: nowrap;">Video ${video.videoNumber}</td>
             <td>${titleContent}</td>
             <td>${scriptContent}</td>
@@ -150,15 +159,18 @@ export function renderAdminHomeView(container, navigate) {
                 ${channelOptions || '<option value="">No channels available</option>'}
               </select>
             </div>
-            <div>
-              <button id="btn-send-notifications" class="btn btn-primary" style="margin-top: 18px;">
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 18px;">
+              <button id="btn-send-notifications" class="btn btn-primary" ${channelVideos.length === 0 ? 'disabled' : ''}>
                 send notifications
               </button>
+              <span id="select-videos-warning" class="animated-select-videos-alert" style="display: none;">
+                select videos first
+              </span>
             </div>
           </div>
 
           <div style="font-size: 12px; color: var(--text-muted);">
-            Rule: If any cell in a row has a value while others are empty, empty cells are marked <code>pending</code>. Clicking "send notifications" notifies every team member whose role matches a pending cell.
+            Rule: Select videos using the leftmost checkbox column to send targeted notifications to team members.
           </div>
 
           <!-- Central Working Table -->
@@ -166,6 +178,9 @@ export function renderAdminHomeView(container, navigate) {
             <table class="data-table">
               <thead>
                 <tr>
+                  <th style="width: 44px; text-align: center;">
+                    <input type="checkbox" id="check-all-videos" ${areAllSelected ? 'checked' : ''} title="Select / Deselect all" style="cursor: pointer; width: 16px; height: 16px;" />
+                  </th>
                   <th>Video #</th>
                   <th>Titles</th>
                   <th>Script</th>
@@ -176,7 +191,7 @@ export function renderAdminHomeView(container, navigate) {
                 </tr>
               </thead>
               <tbody>
-                ${tableRows || '<tr><td colspan="7" style="text-align: center; padding: 24px;" class="helper-text">No videos found for this channel. Use Add &gt; Add Titles to Channel to add videos.</td></tr>'}
+                ${tableRows || '<tr><td colspan="8" style="text-align: center; padding: 24px;" class="helper-text">No videos found for this channel. Use Add &gt; Add Titles to Channel to add videos.</td></tr>'}
               </tbody>
             </table>
           </div>
@@ -208,20 +223,66 @@ export function renderAdminHomeView(container, navigate) {
     if (channelSelect) {
       channelSelect.addEventListener('change', (e) => {
         selectedChannelId = e.target.value;
+        selectedVideoIds.clear();
         notificationBanner = '';
         render();
       });
     }
+
+    const checkAllCb = container.querySelector('#check-all-videos');
+    if (checkAllCb) {
+      checkAllCb.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          channelVideos.forEach((v) => selectedVideoIds.add(v.id));
+        } else {
+          selectedVideoIds.clear();
+        }
+        const warn = container.querySelector('#select-videos-warning');
+        if (warn) warn.style.display = 'none';
+        render();
+      });
+    }
+
+    container.querySelectorAll('.video-select-check').forEach((cb) => {
+      cb.addEventListener('change', (e) => {
+        const vidId = e.target.dataset.videoId;
+        if (e.target.checked) {
+          selectedVideoIds.add(vidId);
+          const warn = container.querySelector('#select-videos-warning');
+          if (warn) warn.style.display = 'none';
+        } else {
+          selectedVideoIds.delete(vidId);
+        }
+        render();
+      });
+    });
 
     // Send notifications button
     const notifBtn = container.querySelector('#btn-send-notifications');
     if (notifBtn) {
       notifBtn.addEventListener('click', async () => {
         if (!selectedChannelId) return;
+
+        if (selectedVideoIds.size === 0) {
+          const warn = container.querySelector('#select-videos-warning');
+          if (warn) {
+            warn.style.display = 'inline-flex';
+            warn.classList.remove('shake-active');
+            void warn.offsetWidth; // Trigger reflow for animation restart
+            warn.classList.add('shake-active');
+          }
+          return;
+        }
+
+        const warn = container.querySelector('#select-videos-warning');
+        if (warn) warn.style.display = 'none';
+
         notifBtn.disabled = true;
-        const result = await store.sendPendingNotifications(selectedChannelId);
+        notifBtn.textContent = 'Sending...';
+        const result = await store.sendPendingNotifications(selectedChannelId, Array.from(selectedVideoIds));
         notificationBanner = result.message;
         notifBtn.disabled = false;
+        notifBtn.textContent = 'send notifications';
         render();
       });
     }
