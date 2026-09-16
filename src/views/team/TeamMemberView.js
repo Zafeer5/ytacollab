@@ -5,10 +5,17 @@ const teamSession = {
   localFiles: {},
   submissionStatus: {},
   taskFeedback: {},
-  inProgressDrafts: {}
+  inProgressDrafts: {},
+  thumbPreviewUrl: null
 };
 
 function clearTeamSession() {
+  if (teamSession.thumbPreviewUrl) {
+    try {
+      URL.revokeObjectURL(teamSession.thumbPreviewUrl);
+    } catch (e) {}
+    teamSession.thumbPreviewUrl = null;
+  }
   Object.keys(teamSession.localFiles).forEach((k) => delete teamSession.localFiles[k]);
   Object.keys(teamSession.submissionStatus).forEach((k) => delete teamSession.submissionStatus[k]);
   Object.keys(teamSession.taskFeedback).forEach((k) => delete teamSession.taskFeedback[k]);
@@ -161,18 +168,36 @@ export function renderTeamMemberView(container, navigate) {
           const selectedThumbFile = teamSession.localFiles['thumbnail'];
           const isThumbSubmitted = teamSession.submissionStatus['thumbnail'] || hasExistingThumb;
 
-          // Overwrite warning appears ONLY when there is already an existing file in DB AND a replacement file is selected!
-          const thumbOverwriteWarning = hasExistingThumb && selectedThumbFile
-            ? `
-              <div class="overwrite-warning-box">
-                <span>⚠️ <strong>Warning:</strong> Thumbnail is already available in the database (<code>${existingThumbName}</code>). If you submit, that previous one will be replaced with new thumbnail (<code>${selectedThumbFile.name}</code>).</span>
-              </div>
-            `
-            : '';
-
           const thumbFeedbackBanner = teamSession.taskFeedback['thumbnail']
             ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${teamSession.taskFeedback['thumbnail']}</div>`
             : '';
+
+          // Mini Thumbnail Preview Box (compact and responsive for mobile)
+          let thumbPreviewHtml = '';
+          if (selectedThumbFile && teamSession.thumbPreviewUrl) {
+            thumbPreviewHtml = `
+              <div class="thumb-mini-preview">
+                <img src="${teamSession.thumbPreviewUrl}" alt="Attached preview" />
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${selectedThumbFile.name}</div>
+                  <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Attached preview (${Math.round(selectedThumbFile.size / 1024)} KB)</div>
+                </div>
+              </div>
+            `;
+          } else if (hasExistingThumb) {
+            thumbPreviewHtml = `
+              <div class="thumb-mini-preview">
+                ${currentVideo.thumbnail.url && currentVideo.thumbnail.url !== '#'
+                  ? `<img src="${currentVideo.thumbnail.url}" alt="Thumbnail in database" />`
+                  : '<div style="width: 110px; height: 62px; display: flex; align-items: center; justify-content: center; background: #141416; border: 1px solid var(--border); border-radius: 4px; font-size: 20px;">🖼️</div>'
+                }
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${existingThumbName}</div>
+                  <div style="font-size: 11px; color: #10b981; margin-top: 2px;">✓ Thumbnail in database</div>
+                </div>
+              </div>
+            `;
+          }
 
           thumbHtml = `
             <div style="padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 16px;">
@@ -188,9 +213,6 @@ export function renderTeamMemberView(container, navigate) {
               <!-- Role Prompts -->
               ${renderPromptsBox('thumbnail')}
 
-              <!-- Overwrite warning if replacing existing DB file -->
-              ${thumbOverwriteWarning}
-
               <div class="file-actions" style="margin-top: 10px;">
                 <input type="file" id="input-thumb-file" accept="image/*" style="display: none;" />
                 <button type="button" id="btn-attach-thumb" class="btn btn-secondary btn-sm">${hasExistingThumb ? 'Change Image' : 'Attach Image'}</button>
@@ -203,13 +225,7 @@ export function renderTeamMemberView(container, navigate) {
                 ${isThumbSubmitted ? '<span class="status-submitted" style="margin-left: auto;">Submitted to Database</span>' : ''}
               </div>
 
-              <div id="thumb-filename-display" class="helper-text" style="margin-top: 8px;">
-                ${selectedThumbFile 
-                  ? `Selected: <strong>${selectedThumbFile.name}</strong> ${hasExistingThumb ? `<em>(will replace ${existingThumbName})</em>` : ''}` 
-                  : hasExistingThumb 
-                  ? `Current file in DB: <strong>${existingThumbName}</strong>` 
-                  : 'No image attached yet'}
-              </div>
+              ${thumbPreviewHtml}
             </div>
           `;
         }
@@ -218,14 +234,6 @@ export function renderTeamMemberView(container, navigate) {
         if (hasMetaRole) {
           const hasExistingMeta = Boolean(currentVideo?.metaInfo && currentVideo.metaInfo.trim());
           const isMetaSubmitted = teamSession.submissionStatus['meta'] || hasExistingMeta;
-
-          const metaOverwriteWarning = hasExistingMeta
-            ? `
-              <div class="overwrite-warning-box">
-                <span>⚠️ <strong>Warning:</strong> Meta Info is already available in the database. If you submit, that previous one will be replaced with new Meta Info.</span>
-              </div>
-            `
-            : '';
 
           const metaFeedbackBanner = teamSession.taskFeedback['meta']
             ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${teamSession.taskFeedback['meta']}</div>`
@@ -248,9 +256,6 @@ export function renderTeamMemberView(container, navigate) {
 
               <!-- Role Prompts -->
               ${renderPromptsBox('Meta Info')}
-
-              <!-- Overwrite warning if meta already in DB -->
-              ${metaOverwriteWarning}
 
               <textarea id="input-meta-info" rows="4" placeholder="Paste description and tags here...">${metaTextValue}</textarea>
               <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
@@ -279,14 +284,6 @@ export function renderTeamMemberView(container, navigate) {
           const hasExistingScript = Boolean(currentVideo?.script && currentVideo.script.trim());
           const isScriptSubmitted = teamSession.submissionStatus['script'] || hasExistingScript;
 
-          const scriptOverwriteWarning = hasExistingScript
-            ? `
-              <div class="overwrite-warning-box">
-                <span>⚠️ <strong>Warning:</strong> Script is already available in the database. If you submit, that previous one will be replaced with new Script.</span>
-              </div>
-            `
-            : '';
-
           const scriptFeedbackBanner = teamSession.taskFeedback['script']
             ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${teamSession.taskFeedback['script']}</div>`
             : '';
@@ -309,9 +306,6 @@ export function renderTeamMemberView(container, navigate) {
               <!-- Role Prompts -->
               ${renderPromptsBox('Script')}
 
-              <!-- Overwrite warning if script already in DB -->
-              ${scriptOverwriteWarning}
-
               <textarea id="input-script-text" rows="5" placeholder="Type or paste your script here...">${scriptTextValue}</textarea>
               <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
                 <button type="button" id="btn-submit-script" class="btn btn-primary btn-sm">
@@ -330,18 +324,33 @@ export function renderTeamMemberView(container, navigate) {
           const selectedVoFile = teamSession.localFiles['voiceover'];
           const isVoSubmitted = teamSession.submissionStatus['voiceover'] || hasExistingVo;
 
-          // Overwrite warning appears ONLY when voiceover already exists in DB AND user selects a replacement file!
-          const voOverwriteWarning = hasExistingVo && selectedVoFile
-            ? `
-              <div class="overwrite-warning-box">
-                <span>⚠️ <strong>Warning:</strong> Voiceover file is already available in the database (<code>${existingVoName}</code>). If you submit, that previous one will be replaced with new voiceover (<code>${selectedVoFile.name}</code>).</span>
-              </div>
-            `
-            : '';
-
           const voFeedbackBanner = teamSession.taskFeedback['voiceover']
             ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${teamSession.taskFeedback['voiceover']}</div>`
             : '';
+
+          // Audio file preview info
+          let voPreviewHtml = '';
+          if (selectedVoFile) {
+            voPreviewHtml = `
+              <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius); max-width: 440px;">
+                <span style="font-size: 20px;">🎵</span>
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${selectedVoFile.name}</div>
+                  <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Attached audio (${Math.round(selectedVoFile.size / 1024)} KB)</div>
+                </div>
+              </div>
+            `;
+          } else if (hasExistingVo) {
+            voPreviewHtml = `
+              <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius); max-width: 440px;">
+                <span style="font-size: 20px;">🎵</span>
+                <div style="flex: 1; min-width: 0;">
+                  <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${existingVoName}</div>
+                  <div style="font-size: 11px; color: #10b981; margin-top: 2px;">✓ Voiceover in database</div>
+                </div>
+              </div>
+            `;
+          }
 
           voHtml = `
             <div>
@@ -357,9 +366,6 @@ export function renderTeamMemberView(container, navigate) {
               <!-- Role Prompts -->
               ${renderPromptsBox('voiceover')}
 
-              <!-- Overwrite warning if replacing existing DB file -->
-              ${voOverwriteWarning}
-
               <div class="file-actions" style="margin-top: 10px;">
                 <input type="file" id="input-vo-file" accept="audio/*" style="display: none;" />
                 <button type="button" id="btn-upload-vo" class="btn btn-secondary btn-sm">${hasExistingVo ? 'Change Audio File' : 'Attach Voiceover'}</button>
@@ -372,13 +378,7 @@ export function renderTeamMemberView(container, navigate) {
                 ${isVoSubmitted ? '<span class="status-submitted" style="margin-left: auto;">Submitted to Database</span>' : ''}
               </div>
 
-              <div id="vo-filename-display" class="helper-text" style="margin-top: 8px;">
-                ${selectedVoFile 
-                  ? `Selected: <strong>${selectedVoFile.name}</strong> ${hasExistingVo ? `<em>(will replace ${existingVoName})</em>` : ''}` 
-                  : hasExistingVo 
-                  ? `Current file in DB: <strong>${existingVoName}</strong>` 
-                  : 'No audio file attached yet'}
-              </div>
+              ${voPreviewHtml}
             </div>
           `;
         }
@@ -400,14 +400,6 @@ export function renderTeamMemberView(container, navigate) {
             const hasExistingCustom = Boolean(currentVideo?.customFields?.[roleName]);
             const isDone = teamSession.submissionStatus[roleName] || hasExistingCustom;
             const selectedCustomFile = teamSession.localFiles[roleName];
-
-            const customOverwriteWarning = hasExistingCustom && (roleDef.inputType !== 'Attach File' || selectedCustomFile)
-              ? `
-                <div class="overwrite-warning-box">
-                  <span>⚠️ <strong>Warning:</strong> ${roleName} is already available in the database. If you submit, that previous one will be replaced with new ${roleName}.</span>
-                </div>
-              `
-              : '';
 
             const customFeedbackBanner = teamSession.taskFeedback[roleName]
               ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${teamSession.taskFeedback[roleName]}</div>`
@@ -446,7 +438,7 @@ export function renderTeamMemberView(container, navigate) {
               controlHtml = `
                 <textarea id="input-val-${roleName}" rows="3" placeholder="Type or paste here...">${customVal}</textarea>
                 <div style="margin-top: 8px; display: flex; align-items: center; gap: 10px;">
-                  <button type="button" class="btn btn-primary btn-sm btn-custom-submit-text" data-role="${roleName}">
+                  <button type="button" id="btn-custom-submit-${roleName}" class="btn btn-primary btn-sm btn-custom-submit-text" data-role="${roleName}">
                     ${hasExistingCustom ? 'Replace & Submit' : 'Submit'}
                   </button>
                   ${isDone ? '<span class="status-submitted">Submitted to Database</span>' : ''}
@@ -465,9 +457,6 @@ export function renderTeamMemberView(container, navigate) {
 
                 <!-- Role Prompts -->
                 ${renderPromptsBox(roleName)}
-
-                <!-- Overwrite warning if already in DB -->
-                ${customOverwriteWarning}
 
                 ${controlHtml}
               </div>
@@ -542,7 +531,7 @@ export function renderTeamMemberView(container, navigate) {
             : ''
         }
 
-        <!-- Role Task Forms with Prompts and Overwrite Warnings -->
+        <!-- Role Task Forms with Prompts -->
         ${taskSectionsHtml}
 
         <!-- Shared Stacked Ledger -->
@@ -647,13 +636,26 @@ export function renderTeamMemberView(container, navigate) {
     if (removeThumbBtn) {
       removeThumbBtn.addEventListener('click', () => {
         delete teamSession.localFiles['thumbnail'];
+        if (teamSession.thumbPreviewUrl) {
+          try {
+            URL.revokeObjectURL(teamSession.thumbPreviewUrl);
+          } catch (err) {}
+          teamSession.thumbPreviewUrl = null;
+        }
         render();
       });
     }
     if (thumbInput) {
       thumbInput.addEventListener('change', (e) => {
         if (e.target.files && e.target.files[0]) {
-          teamSession.localFiles['thumbnail'] = e.target.files[0];
+          const file = e.target.files[0];
+          teamSession.localFiles['thumbnail'] = file;
+          try {
+            if (teamSession.thumbPreviewUrl) {
+              URL.revokeObjectURL(teamSession.thumbPreviewUrl);
+            }
+            teamSession.thumbPreviewUrl = URL.createObjectURL(file);
+          } catch (err) {}
           delete teamSession.taskFeedback['thumbnail'];
           render();
         }
@@ -685,10 +687,14 @@ export function renderTeamMemberView(container, navigate) {
 
         if (res.success) {
           delete teamSession.localFiles['thumbnail'];
+          if (teamSession.thumbPreviewUrl) {
+            try {
+              URL.revokeObjectURL(teamSession.thumbPreviewUrl);
+            } catch (err) {}
+            teamSession.thumbPreviewUrl = null;
+          }
           teamSession.submissionStatus['thumbnail'] = 'Submitted';
-          teamSession.taskFeedback['thumbnail'] = hadPrevious
-            ? `✓ Previous thumbnail replaced with new file: "${file.name}" (Saved to database)`
-            : `✓ Thumbnail "${file.name}" successfully saved to database!`;
+          teamSession.taskFeedback['thumbnail'] = `✓ Thumbnail "${file.name}" successfully saved to database!`;
         } else {
           teamSession.taskFeedback['thumbnail'] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
         }
@@ -726,9 +732,7 @@ export function renderTeamMemberView(container, navigate) {
         if (res.success) {
           delete teamSession.inProgressDrafts['meta'];
           teamSession.submissionStatus['meta'] = 'Submitted';
-          teamSession.taskFeedback['meta'] = hadPrevious
-            ? '✓ Previous Meta Info replaced with new submission (Saved to database)'
-            : '✓ Meta Info successfully saved to database!';
+          teamSession.taskFeedback['meta'] = '✓ Meta Info successfully saved to database!';
         } else {
           teamSession.taskFeedback['meta'] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
         }
@@ -766,9 +770,7 @@ export function renderTeamMemberView(container, navigate) {
         if (res.success) {
           delete teamSession.inProgressDrafts['script'];
           teamSession.submissionStatus['script'] = 'Submitted';
-          teamSession.taskFeedback['script'] = hadPrevious
-            ? '✓ Previous Script replaced with new submission (Saved to database)'
-            : '✓ Script successfully saved to database!';
+          teamSession.taskFeedback['script'] = '✓ Script successfully saved to database!';
         } else {
           teamSession.taskFeedback['script'] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
         }
@@ -827,9 +829,7 @@ export function renderTeamMemberView(container, navigate) {
         if (res.success) {
           delete teamSession.localFiles['voiceover'];
           teamSession.submissionStatus['voiceover'] = 'Submitted';
-          teamSession.taskFeedback['voiceover'] = hadPrevious
-            ? `✓ Previous voiceover replaced with new file: "${file.name}" (Saved to database)`
-            : `✓ Voiceover "${file.name}" successfully saved to database!`;
+          teamSession.taskFeedback['voiceover'] = `✓ Voiceover "${file.name}" successfully saved to database!`;
         } else {
           teamSession.taskFeedback['voiceover'] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
         }
@@ -880,9 +880,7 @@ export function renderTeamMemberView(container, navigate) {
         if (res.success) {
           delete teamSession.localFiles[role];
           teamSession.submissionStatus[role] = 'Submitted';
-          teamSession.taskFeedback[role] = hadPrevious
-            ? `✓ Previous ${role} replaced with new file: "${file.name}" (Saved to database)`
-            : `✓ ${role} "${file.name}" successfully saved to database!`;
+          teamSession.taskFeedback[role] = `✓ ${role} "${file.name}" successfully saved to database!`;
         } else {
           teamSession.taskFeedback[role] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
         }
@@ -915,9 +913,7 @@ export function renderTeamMemberView(container, navigate) {
         if (res.success) {
           delete teamSession.inProgressDrafts[role];
           teamSession.submissionStatus[role] = 'Submitted';
-          teamSession.taskFeedback[role] = hadPrevious
-            ? `✓ Previous ${role} replaced with new value (Saved to database)`
-            : `✓ ${role} successfully saved to database!`;
+          teamSession.taskFeedback[role] = `✓ ${role} successfully saved to database!`;
         } else {
           teamSession.taskFeedback[role] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
         }
@@ -950,9 +946,7 @@ export function renderTeamMemberView(container, navigate) {
         if (res.success) {
           delete teamSession.inProgressDrafts[role];
           teamSession.submissionStatus[role] = 'Submitted';
-          teamSession.taskFeedback[role] = hadPrevious
-            ? `✓ Previous ${role} replaced with new value (Saved to database)`
-            : `✓ ${role} successfully saved to database!`;
+          teamSession.taskFeedback[role] = `✓ ${role} successfully saved to database!`;
         } else {
           teamSession.taskFeedback[role] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
         }
