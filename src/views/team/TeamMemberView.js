@@ -102,22 +102,22 @@ export function renderTeamMemberView(container, navigate) {
 
     // Contextual title display
     const autoFetchedTitle = !selectedChannelId
-      ? '— (Please select a YouTube Channel)'
+      ? ' (Please select a YouTube Channel)'
       : !selectedVideoNum
-      ? '— (Please select a Video #)'
+      ? ' (Please select a Video #)'
       : currentVideo
-      ? (currentVideo.title || '— (No Title Found)')
-      : '— (Video Not Found)';
+      ? (currentVideo.title || ' (No Title Found)')
+      : ' (Video Not Found)';
 
     // Channel dropdown options (defaults to clean unselected prompt)
     const channelOptions = [
-      `<option value="" ${!selectedChannelId ? 'selected' : ''}>-- Select Channel --</option>`,
+      `<option value="" ${!selectedChannelId ? 'selected' : ''}> Select Channel </option>`,
       ...channels.map((c) => `<option value="${c.id}" ${c.id === selectedChannelId ? 'selected' : ''}>${c.name}</option>`)
     ].join('');
 
     // Video # dropdown options (defaults to clean unselected prompt)
     const videoNumOptions = [
-      `<option value="" ${!selectedVideoNum ? 'selected' : ''}>-- Select Video # --</option>`,
+      `<option value="" ${!selectedVideoNum ? 'selected' : ''}> Select Video # </option>`,
       ...channelVideos.map((v) => `<option value="${v.videoNumber}" ${String(v.videoNumber) === String(selectedVideoNum) ? 'selected' : ''}>Video ${v.videoNumber}</option>`)
     ].join('');
 
