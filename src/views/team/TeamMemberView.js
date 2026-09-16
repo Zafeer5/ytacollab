@@ -1,13 +1,23 @@
 import { store } from '../../lib/store.js';
 
+// Session-level persistent state for team member view across renders & store updates
+const teamSession = {
+  localFiles: {},
+  submissionStatus: {},
+  taskFeedback: {},
+  inProgressDrafts: {}
+};
+
+function clearTeamSession() {
+  Object.keys(teamSession.localFiles).forEach((k) => delete teamSession.localFiles[k]);
+  Object.keys(teamSession.submissionStatus).forEach((k) => delete teamSession.submissionStatus[k]);
+  Object.keys(teamSession.taskFeedback).forEach((k) => delete teamSession.taskFeedback[k]);
+  Object.keys(teamSession.inProgressDrafts).forEach((k) => delete teamSession.inProgressDrafts[k]);
+}
+
 export function renderTeamMemberView(container, navigate) {
   let selectedChannelId = sessionStorage.getItem('yta_team_channel_id') || '';
   let selectedVideoNum = sessionStorage.getItem('yta_team_video_num') || '';
-
-  // Track temporary file selections per task
-  const localFiles = {};
-  const submissionStatus = {}; // { [taskKey]: 'Submitted' }
-  const taskFeedback = {}; // { [taskKey]: message }
 
   function renderPromptsBox(roleName) {
     const prompts = store.getPromptsForRole(roleName);
@@ -148,8 +158,8 @@ export function renderTeamMemberView(container, navigate) {
         if (hasThumbnailRole) {
           const hasExistingThumb = Boolean(currentVideo?.thumbnail && currentVideo.thumbnail.name);
           const existingThumbName = hasExistingThumb ? currentVideo.thumbnail.name : '';
-          const selectedThumbFile = localFiles['thumbnail'];
-          const isThumbSubmitted = submissionStatus['thumbnail'] || hasExistingThumb;
+          const selectedThumbFile = teamSession.localFiles['thumbnail'];
+          const isThumbSubmitted = teamSession.submissionStatus['thumbnail'] || hasExistingThumb;
 
           // Overwrite warning appears ONLY when there is already an existing file in DB AND a replacement file is selected!
           const thumbOverwriteWarning = hasExistingThumb && selectedThumbFile
@@ -160,8 +170,8 @@ export function renderTeamMemberView(container, navigate) {
             `
             : '';
 
-          const thumbFeedbackBanner = taskFeedback['thumbnail']
-            ? `<div class="notification-banner" style="background-color: var(--success-bg); border-color: var(--success-border); color: var(--success-text); margin-bottom: 10px;">${taskFeedback['thumbnail']}</div>`
+          const thumbFeedbackBanner = teamSession.taskFeedback['thumbnail']
+            ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${teamSession.taskFeedback['thumbnail']}</div>`
             : '';
 
           thumbHtml = `
@@ -207,7 +217,7 @@ export function renderTeamMemberView(container, navigate) {
         let metaHtml = '';
         if (hasMetaRole) {
           const hasExistingMeta = Boolean(currentVideo?.metaInfo && currentVideo.metaInfo.trim());
-          const isMetaSubmitted = submissionStatus['meta'] || hasExistingMeta;
+          const isMetaSubmitted = teamSession.submissionStatus['meta'] || hasExistingMeta;
 
           const metaOverwriteWarning = hasExistingMeta
             ? `
@@ -217,9 +227,13 @@ export function renderTeamMemberView(container, navigate) {
             `
             : '';
 
-          const metaFeedbackBanner = taskFeedback['meta']
-            ? `<div class="notification-banner" style="background-color: var(--success-bg); border-color: var(--success-border); color: var(--success-text); margin-bottom: 10px;">${taskFeedback['meta']}</div>`
+          const metaFeedbackBanner = teamSession.taskFeedback['meta']
+            ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${teamSession.taskFeedback['meta']}</div>`
             : '';
+
+          const metaTextValue = teamSession.inProgressDrafts['meta'] !== undefined
+            ? teamSession.inProgressDrafts['meta']
+            : (currentVideo?.metaInfo || '');
 
           metaHtml = `
             <div>
@@ -238,7 +252,7 @@ export function renderTeamMemberView(container, navigate) {
               <!-- Overwrite warning if meta already in DB -->
               ${metaOverwriteWarning}
 
-              <textarea id="input-meta-info" rows="4" placeholder="Paste description and tags here...">${currentVideo?.metaInfo || ''}</textarea>
+              <textarea id="input-meta-info" rows="4" placeholder="Paste description and tags here...">${metaTextValue}</textarea>
               <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
                 <button type="button" id="btn-submit-meta" class="btn btn-primary btn-sm">
                   ${hasExistingMeta ? 'Replace & Submit Meta Info' : 'Submit Meta Information'}
@@ -263,7 +277,7 @@ export function renderTeamMemberView(container, navigate) {
         let scriptHtml = '';
         if (hasScriptRole) {
           const hasExistingScript = Boolean(currentVideo?.script && currentVideo.script.trim());
-          const isScriptSubmitted = submissionStatus['script'] || hasExistingScript;
+          const isScriptSubmitted = teamSession.submissionStatus['script'] || hasExistingScript;
 
           const scriptOverwriteWarning = hasExistingScript
             ? `
@@ -273,9 +287,13 @@ export function renderTeamMemberView(container, navigate) {
             `
             : '';
 
-          const scriptFeedbackBanner = taskFeedback['script']
-            ? `<div class="notification-banner" style="background-color: var(--success-bg); border-color: var(--success-border); color: var(--success-text); margin-bottom: 10px;">${taskFeedback['script']}</div>`
+          const scriptFeedbackBanner = teamSession.taskFeedback['script']
+            ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${teamSession.taskFeedback['script']}</div>`
             : '';
+
+          const scriptTextValue = teamSession.inProgressDrafts['script'] !== undefined
+            ? teamSession.inProgressDrafts['script']
+            : (currentVideo?.script || '');
 
           scriptHtml = `
             <div style="padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 16px;">
@@ -294,7 +312,7 @@ export function renderTeamMemberView(container, navigate) {
               <!-- Overwrite warning if script already in DB -->
               ${scriptOverwriteWarning}
 
-              <textarea id="input-script-text" rows="5" placeholder="Type or paste your script here...">${currentVideo?.script || ''}</textarea>
+              <textarea id="input-script-text" rows="5" placeholder="Type or paste your script here...">${scriptTextValue}</textarea>
               <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
                 <button type="button" id="btn-submit-script" class="btn btn-primary btn-sm">
                   ${hasExistingScript ? 'Replace & Submit Script' : 'Submit Script'}
@@ -309,8 +327,8 @@ export function renderTeamMemberView(container, navigate) {
         if (hasVoiceoverRole) {
           const hasExistingVo = Boolean(currentVideo?.voiceover && currentVideo.voiceover.name);
           const existingVoName = hasExistingVo ? currentVideo.voiceover.name : '';
-          const selectedVoFile = localFiles['voiceover'];
-          const isVoSubmitted = submissionStatus['voiceover'] || hasExistingVo;
+          const selectedVoFile = teamSession.localFiles['voiceover'];
+          const isVoSubmitted = teamSession.submissionStatus['voiceover'] || hasExistingVo;
 
           // Overwrite warning appears ONLY when voiceover already exists in DB AND user selects a replacement file!
           const voOverwriteWarning = hasExistingVo && selectedVoFile
@@ -321,8 +339,8 @@ export function renderTeamMemberView(container, navigate) {
             `
             : '';
 
-          const voFeedbackBanner = taskFeedback['voiceover']
-            ? `<div class="notification-banner" style="background-color: var(--success-bg); border-color: var(--success-border); color: var(--success-text); margin-bottom: 10px;">${taskFeedback['voiceover']}</div>`
+          const voFeedbackBanner = teamSession.taskFeedback['voiceover']
+            ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${teamSession.taskFeedback['voiceover']}</div>`
             : '';
 
           voHtml = `
@@ -380,8 +398,8 @@ export function renderTeamMemberView(container, navigate) {
           .map((roleName, index) => {
             const roleDef = state.roles.find((r) => r.name.toLowerCase() === roleName.toLowerCase()) || { inputType: 'Text' };
             const hasExistingCustom = Boolean(currentVideo?.customFields?.[roleName]);
-            const isDone = submissionStatus[roleName] || hasExistingCustom;
-            const selectedCustomFile = localFiles[roleName];
+            const isDone = teamSession.submissionStatus[roleName] || hasExistingCustom;
+            const selectedCustomFile = teamSession.localFiles[roleName];
 
             const customOverwriteWarning = hasExistingCustom && (roleDef.inputType !== 'Attach File' || selectedCustomFile)
               ? `
@@ -391,9 +409,13 @@ export function renderTeamMemberView(container, navigate) {
               `
               : '';
 
-            const customFeedbackBanner = taskFeedback[roleName]
-              ? `<div class="notification-banner" style="background-color: var(--success-bg); border-color: var(--success-border); color: var(--success-text); margin-bottom: 10px;">${taskFeedback[roleName]}</div>`
+            const customFeedbackBanner = teamSession.taskFeedback[roleName]
+              ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${teamSession.taskFeedback[roleName]}</div>`
               : '';
+
+            const customVal = teamSession.inProgressDrafts[roleName] !== undefined
+              ? teamSession.inProgressDrafts[roleName]
+              : (currentVideo?.customFields?.[roleName] || '');
 
             let controlHtml = '';
             if (roleDef.inputType === 'Attach File') {
@@ -413,7 +435,7 @@ export function renderTeamMemberView(container, navigate) {
             } else if (roleDef.inputType === 'Number') {
               controlHtml = `
                 <div style="display: flex; gap: 8px; align-items: center; max-width: 320px; margin-top: 8px;">
-                  <input type="number" id="input-val-${roleName}" value="${currentVideo?.customFields?.[roleName] || ''}" placeholder="Enter number..." />
+                  <input type="number" id="input-val-${roleName}" value="${customVal}" placeholder="Enter number..." />
                   <button type="button" class="btn btn-primary btn-sm btn-custom-submit-num" data-role="${roleName}">
                     ${hasExistingCustom ? 'Replace & Submit' : 'Submit'}
                   </button>
@@ -422,7 +444,7 @@ export function renderTeamMemberView(container, navigate) {
               `;
             } else {
               controlHtml = `
-                <textarea id="input-val-${roleName}" rows="3" placeholder="Type or paste here...">${currentVideo?.customFields?.[roleName] || ''}</textarea>
+                <textarea id="input-val-${roleName}" rows="3" placeholder="Type or paste here...">${customVal}</textarea>
                 <div style="margin-top: 8px; display: flex; align-items: center; gap: 10px;">
                   <button type="button" class="btn btn-primary btn-sm btn-custom-submit-text" data-role="${roleName}">
                     ${hasExistingCustom ? 'Replace & Submit' : 'Submit'}
@@ -539,6 +561,7 @@ export function renderTeamMemberView(container, navigate) {
     const logoutBtn = container.querySelector('#btn-member-logout');
     if (logoutBtn) {
       logoutBtn.addEventListener('click', async () => {
+        clearTeamSession();
         await store.logout();
         sessionStorage.removeItem('yta_team_channel_id');
         sessionStorage.removeItem('yta_team_video_num');
@@ -553,10 +576,7 @@ export function renderTeamMemberView(container, navigate) {
         sessionStorage.setItem('yta_team_channel_id', selectedChannelId);
         selectedVideoNum = '';
         sessionStorage.setItem('yta_team_video_num', '');
-        // Clear temp inputs
-        Object.keys(localFiles).forEach((k) => delete localFiles[k]);
-        Object.keys(submissionStatus).forEach((k) => delete submissionStatus[k]);
-        Object.keys(taskFeedback).forEach((k) => delete taskFeedback[k]);
+        clearTeamSession();
         render();
       });
     }
@@ -566,11 +586,23 @@ export function renderTeamMemberView(container, navigate) {
       vidSelect.addEventListener('change', (e) => {
         selectedVideoNum = e.target.value;
         sessionStorage.setItem('yta_team_video_num', selectedVideoNum);
-        // Clear temp inputs
-        Object.keys(localFiles).forEach((k) => delete localFiles[k]);
-        Object.keys(submissionStatus).forEach((k) => delete submissionStatus[k]);
-        Object.keys(taskFeedback).forEach((k) => delete taskFeedback[k]);
+        clearTeamSession();
         render();
+      });
+    }
+
+    // Input listeners to preserve typed drafts across renders
+    const metaInput = container.querySelector('#input-meta-info');
+    if (metaInput) {
+      metaInput.addEventListener('input', (e) => {
+        teamSession.inProgressDrafts['meta'] = e.target.value;
+      });
+    }
+
+    const scriptInput = container.querySelector('#input-script-text');
+    if (scriptInput) {
+      scriptInput.addEventListener('input', (e) => {
+        teamSession.inProgressDrafts['script'] = e.target.value;
       });
     }
 
@@ -614,26 +646,32 @@ export function renderTeamMemberView(container, navigate) {
     }
     if (removeThumbBtn) {
       removeThumbBtn.addEventListener('click', () => {
-        delete localFiles['thumbnail'];
+        delete teamSession.localFiles['thumbnail'];
         render();
       });
     }
     if (thumbInput) {
       thumbInput.addEventListener('change', (e) => {
         if (e.target.files && e.target.files[0]) {
-          localFiles['thumbnail'] = e.target.files[0];
+          teamSession.localFiles['thumbnail'] = e.target.files[0];
+          delete teamSession.taskFeedback['thumbnail'];
           render();
         }
       });
     }
     if (submitThumbBtn) {
       submitThumbBtn.addEventListener('click', async () => {
-        if (!selectedThumbFile && !currentVideo?.thumbnail) return;
-        const file = localFiles['thumbnail'];
+        const file = teamSession.localFiles['thumbnail'];
+        if (!file) {
+          teamSession.taskFeedback['thumbnail'] = '⚠️ Please select or attach an image file first before submitting.';
+          render();
+          return;
+        }
+
         const hadPrevious = Boolean(currentVideo?.thumbnail && currentVideo.thumbnail.name);
 
         submitThumbBtn.disabled = true;
-        submitThumbBtn.textContent = 'Submitting...';
+        submitThumbBtn.textContent = 'Uploading & Submitting...';
 
         const res = await store.submitContent({
           channelId: selectedChannelId,
@@ -646,13 +684,13 @@ export function renderTeamMemberView(container, navigate) {
         submitThumbBtn.textContent = hadPrevious ? 'Replace & Submit Image' : 'Submit Image';
 
         if (res.success) {
-          delete localFiles['thumbnail'];
-          submissionStatus['thumbnail'] = 'Submitted';
-          taskFeedback['thumbnail'] = hadPrevious
+          delete teamSession.localFiles['thumbnail'];
+          teamSession.submissionStatus['thumbnail'] = 'Submitted';
+          teamSession.taskFeedback['thumbnail'] = hadPrevious
             ? `✓ Previous thumbnail replaced with new file: "${file.name}" (Saved to database)`
-            : `✓ Thumbnail "${file.name}" successfully submitted to database!`;
+            : `✓ Thumbnail "${file.name}" successfully saved to database!`;
         } else {
-          taskFeedback['thumbnail'] = `Submission error: ${res.error || 'Failed to submit'}`;
+          teamSession.taskFeedback['thumbnail'] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
         }
         render();
       });
@@ -662,11 +700,18 @@ export function renderTeamMemberView(container, navigate) {
     const submitMetaBtn = container.querySelector('#btn-submit-meta');
     if (submitMetaBtn) {
       submitMetaBtn.addEventListener('click', async () => {
-        const textVal = container.querySelector('#input-meta-info')?.value || '';
+        const inputEl = container.querySelector('#input-meta-info');
+        const textVal = (inputEl?.value || teamSession.inProgressDrafts['meta'] || '').trim();
+        if (!textVal) {
+          teamSession.taskFeedback['meta'] = '⚠️ Please enter Meta information (description & tags) before submitting.';
+          render();
+          return;
+        }
+
         const hadPrevious = Boolean(currentVideo?.metaInfo && currentVideo.metaInfo.trim());
 
         submitMetaBtn.disabled = true;
-        submitMetaBtn.textContent = 'Submitting...';
+        submitMetaBtn.textContent = 'Submitting to database...';
 
         const res = await store.submitContent({
           channelId: selectedChannelId,
@@ -679,12 +724,13 @@ export function renderTeamMemberView(container, navigate) {
         submitMetaBtn.textContent = hadPrevious ? 'Replace & Submit Meta Info' : 'Submit Meta Information';
 
         if (res.success) {
-          submissionStatus['meta'] = 'Submitted';
-          taskFeedback['meta'] = hadPrevious
-            ? '✓ Previous Meta Info replaced with new submission (Saved in database)'
-            : '✓ Meta Info successfully submitted to database!';
+          delete teamSession.inProgressDrafts['meta'];
+          teamSession.submissionStatus['meta'] = 'Submitted';
+          teamSession.taskFeedback['meta'] = hadPrevious
+            ? '✓ Previous Meta Info replaced with new submission (Saved to database)'
+            : '✓ Meta Info successfully saved to database!';
         } else {
-          taskFeedback['meta'] = `Submission error: ${res.error || 'Failed to submit'}`;
+          teamSession.taskFeedback['meta'] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
         }
         render();
       });
@@ -694,11 +740,18 @@ export function renderTeamMemberView(container, navigate) {
     const submitScriptBtn = container.querySelector('#btn-submit-script');
     if (submitScriptBtn) {
       submitScriptBtn.addEventListener('click', async () => {
-        const scriptVal = container.querySelector('#input-script-text')?.value || '';
+        const inputEl = container.querySelector('#input-script-text');
+        const scriptVal = (inputEl?.value || teamSession.inProgressDrafts['script'] || '').trim();
+        if (!scriptVal) {
+          teamSession.taskFeedback['script'] = '⚠️ Please enter script content before submitting.';
+          render();
+          return;
+        }
+
         const hadPrevious = Boolean(currentVideo?.script && currentVideo.script.trim());
 
         submitScriptBtn.disabled = true;
-        submitScriptBtn.textContent = 'Submitting...';
+        submitScriptBtn.textContent = 'Submitting to database...';
 
         const res = await store.submitContent({
           channelId: selectedChannelId,
@@ -711,12 +764,13 @@ export function renderTeamMemberView(container, navigate) {
         submitScriptBtn.textContent = hadPrevious ? 'Replace & Submit Script' : 'Submit Script';
 
         if (res.success) {
-          submissionStatus['script'] = 'Submitted';
-          taskFeedback['script'] = hadPrevious
-            ? '✓ Previous Script replaced with new submission (Saved in database)'
-            : '✓ Script successfully submitted to database!';
+          delete teamSession.inProgressDrafts['script'];
+          teamSession.submissionStatus['script'] = 'Submitted';
+          teamSession.taskFeedback['script'] = hadPrevious
+            ? '✓ Previous Script replaced with new submission (Saved to database)'
+            : '✓ Script successfully saved to database!';
         } else {
-          taskFeedback['script'] = `Submission error: ${res.error || 'Failed to submit'}`;
+          teamSession.taskFeedback['script'] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
         }
         render();
       });
@@ -733,26 +787,32 @@ export function renderTeamMemberView(container, navigate) {
     }
     if (removeVoBtn) {
       removeVoBtn.addEventListener('click', () => {
-        delete localFiles['voiceover'];
+        delete teamSession.localFiles['voiceover'];
         render();
       });
     }
     if (voInput) {
       voInput.addEventListener('change', (e) => {
         if (e.target.files && e.target.files[0]) {
-          localFiles['voiceover'] = e.target.files[0];
+          teamSession.localFiles['voiceover'] = e.target.files[0];
+          delete teamSession.taskFeedback['voiceover'];
           render();
         }
       });
     }
     if (submitVoBtn) {
       submitVoBtn.addEventListener('click', async () => {
-        const file = localFiles['voiceover'];
-        if (!file) return;
+        const file = teamSession.localFiles['voiceover'];
+        if (!file) {
+          teamSession.taskFeedback['voiceover'] = '⚠️ Please select or attach an audio voiceover file first.';
+          render();
+          return;
+        }
+
         const hadPrevious = Boolean(currentVideo?.voiceover && currentVideo.voiceover.name);
 
         submitVoBtn.disabled = true;
-        submitVoBtn.textContent = 'Submitting...';
+        submitVoBtn.textContent = 'Uploading & Submitting...';
 
         const res = await store.submitContent({
           channelId: selectedChannelId,
@@ -765,13 +825,13 @@ export function renderTeamMemberView(container, navigate) {
         submitVoBtn.textContent = hadPrevious ? 'Replace & Submit Voiceover' : 'Submit Voiceover';
 
         if (res.success) {
-          delete localFiles['voiceover'];
-          submissionStatus['voiceover'] = 'Submitted';
-          taskFeedback['voiceover'] = hadPrevious
+          delete teamSession.localFiles['voiceover'];
+          teamSession.submissionStatus['voiceover'] = 'Submitted';
+          teamSession.taskFeedback['voiceover'] = hadPrevious
             ? `✓ Previous voiceover replaced with new file: "${file.name}" (Saved to database)`
-            : `✓ Voiceover "${file.name}" successfully submitted to database!`;
+            : `✓ Voiceover "${file.name}" successfully saved to database!`;
         } else {
-          taskFeedback['voiceover'] = `Submission error: ${res.error || 'Failed to submit'}`;
+          teamSession.taskFeedback['voiceover'] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
         }
         render();
       });
@@ -785,7 +845,8 @@ export function renderTeamMemberView(container, navigate) {
         if (fi) {
           fi.onchange = (ev) => {
             if (ev.target.files && ev.target.files[0]) {
-              localFiles[role] = ev.target.files[0];
+              teamSession.localFiles[role] = ev.target.files[0];
+              delete teamSession.taskFeedback[role];
               render();
             }
           };
@@ -797,11 +858,17 @@ export function renderTeamMemberView(container, navigate) {
     container.querySelectorAll('.btn-custom-submit').forEach((btn) => {
       btn.addEventListener('click', async (e) => {
         const role = e.target.dataset.role;
-        const file = localFiles[role];
-        if (!file) return;
+        const file = teamSession.localFiles[role];
+        if (!file) {
+          teamSession.taskFeedback[role] = `⚠️ Please attach a file for ${role} before submitting.`;
+          render();
+          return;
+        }
+
         const hadPrevious = Boolean(currentVideo?.customFields?.[role]);
 
         btn.disabled = true;
+        btn.textContent = 'Submitting...';
         const res = await store.submitContent({
           channelId: selectedChannelId,
           videoNumber: selectedVideoNum,
@@ -811,13 +878,13 @@ export function renderTeamMemberView(container, navigate) {
         btn.disabled = false;
 
         if (res.success) {
-          delete localFiles[role];
-          submissionStatus[role] = 'Submitted';
-          taskFeedback[role] = hadPrevious
-            ? `✓ Previous ${role} replaced with new file: "${file.name}"`
-            : `✓ ${role} "${file.name}" successfully submitted!`;
+          delete teamSession.localFiles[role];
+          teamSession.submissionStatus[role] = 'Submitted';
+          teamSession.taskFeedback[role] = hadPrevious
+            ? `✓ Previous ${role} replaced with new file: "${file.name}" (Saved to database)`
+            : `✓ ${role} "${file.name}" successfully saved to database!`;
         } else {
-          taskFeedback[role] = `Submission error: ${res.error || 'Failed to submit'}`;
+          teamSession.taskFeedback[role] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
         }
         render();
       });
@@ -826,10 +893,17 @@ export function renderTeamMemberView(container, navigate) {
     container.querySelectorAll('.btn-custom-submit-num').forEach((btn) => {
       btn.addEventListener('click', async (e) => {
         const role = e.target.dataset.role;
-        const val = container.querySelector(`#input-val-${role}`)?.value;
+        const val = (container.querySelector(`#input-val-${role}`)?.value || '').trim();
+        if (!val) {
+          teamSession.taskFeedback[role] = `⚠️ Please enter a number for ${role} before submitting.`;
+          render();
+          return;
+        }
+
         const hadPrevious = Boolean(currentVideo?.customFields?.[role]);
 
         btn.disabled = true;
+        btn.textContent = 'Submitting...';
         const res = await store.submitContent({
           channelId: selectedChannelId,
           videoNumber: selectedVideoNum,
@@ -839,12 +913,13 @@ export function renderTeamMemberView(container, navigate) {
         btn.disabled = false;
 
         if (res.success) {
-          submissionStatus[role] = 'Submitted';
-          taskFeedback[role] = hadPrevious
-            ? `✓ Previous ${role} replaced with new value`
-            : `✓ ${role} successfully submitted!`;
+          delete teamSession.inProgressDrafts[role];
+          teamSession.submissionStatus[role] = 'Submitted';
+          teamSession.taskFeedback[role] = hadPrevious
+            ? `✓ Previous ${role} replaced with new value (Saved to database)`
+            : `✓ ${role} successfully saved to database!`;
         } else {
-          taskFeedback[role] = `Submission error: ${res.error || 'Failed to submit'}`;
+          teamSession.taskFeedback[role] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
         }
         render();
       });
@@ -853,10 +928,17 @@ export function renderTeamMemberView(container, navigate) {
     container.querySelectorAll('.btn-custom-submit-text').forEach((btn) => {
       btn.addEventListener('click', async (e) => {
         const role = e.target.dataset.role;
-        const val = container.querySelector(`#input-val-${role}`)?.value;
+        const val = (container.querySelector(`#input-val-${role}`)?.value || '').trim();
+        if (!val) {
+          teamSession.taskFeedback[role] = `⚠️ Please enter text for ${role} before submitting.`;
+          render();
+          return;
+        }
+
         const hadPrevious = Boolean(currentVideo?.customFields?.[role]);
 
         btn.disabled = true;
+        btn.textContent = 'Submitting...';
         const res = await store.submitContent({
           channelId: selectedChannelId,
           videoNumber: selectedVideoNum,
@@ -866,12 +948,13 @@ export function renderTeamMemberView(container, navigate) {
         btn.disabled = false;
 
         if (res.success) {
-          submissionStatus[role] = 'Submitted';
-          taskFeedback[role] = hadPrevious
-            ? `✓ Previous ${role} replaced with new value`
-            : `✓ ${role} successfully submitted!`;
+          delete teamSession.inProgressDrafts[role];
+          teamSession.submissionStatus[role] = 'Submitted';
+          teamSession.taskFeedback[role] = hadPrevious
+            ? `✓ Previous ${role} replaced with new value (Saved to database)`
+            : `✓ ${role} successfully saved to database!`;
         } else {
-          taskFeedback[role] = `Submission error: ${res.error || 'Failed to submit'}`;
+          teamSession.taskFeedback[role] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
         }
         render();
       });

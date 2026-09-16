@@ -166,6 +166,18 @@ store.subscribe(() => {
   handleRoute();
 });
 
+// PWA Installation Handling
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  window.deferredInstallPrompt = e;
+  window.dispatchEvent(new CustomEvent('pwa-prompt-available'));
+});
+
+window.addEventListener('appinstalled', () => {
+  window.deferredInstallPrompt = null;
+  console.log('YTA colabapp PWA installed successfully');
+});
+
 // Service Worker Registration
 if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
   window.addEventListener('load', () => {

@@ -667,18 +667,32 @@ class SupabaseStore {
   // --- Submissions & Storage Upload ---
   async submitContent({ channelId, videoNumber, task, textValue, file }) {
     const vid = this.state.videos.find((v) => v.channelId === channelId && v.videoNumber === Number(videoNumber));
-    if (!vid) return { success: false, error: 'Video not found.' };
+    if (!vid) return { success: false, error: 'Target video not found for this channel.' };
 
-    const role = this.state.roles.find((r) => r.name.toLowerCase() === task.toLowerCase()) || {
-      id: null,
-      name: task
-    };
+    const normTask = (task || '').trim().toLowerCase();
+    const role = this.state.roles.find(
+      (r) =>
+        r.name.toLowerCase() === normTask ||
+        (normTask.includes('meta') && r.name.toLowerCase().includes('meta')) ||
+        (normTask.includes('thumb') && r.name.toLowerCase().includes('thumb')) ||
+        (normTask.includes('script') && r.name.toLowerCase().includes('script')) ||
+        (normTask.includes('voice') && r.name.toLowerCase().includes('voice'))
+    );
+
+    if (!role || !role.id) {
+      return { success: false, error: `Role "${task}" was not found in the database roles.` };
+    }
+
+    // Ensure we do not submit empty content
+    if (!file && (!textValue || !textValue.trim())) {
+      return { success: false, error: 'Cannot submit empty content. Please provide input before submitting.' };
+    }
 
     let filePath = null;
     let fileName = null;
 
     if (file) {
-      const bucket = task.toLowerCase().includes('voice') ? 'voiceovers' : 'thumbnails';
+      const bucket = normTask.includes('voice') ? 'voiceovers' : 'thumbnails';
       const uploadRes = await uploadStorageFile(bucket, `vid_${videoNumber}`, file);
       filePath = uploadRes.publicUrl || uploadRes.filePath;
       fileName = uploadRes.fileName || file.name;
@@ -689,7 +703,7 @@ class SupabaseStore {
       video_id: vid.id,
       role_id: role.id,
       submitted_by: this.state.currentUser?.id || null,
-      content_text: textValue || null,
+      content_text: textValue ? textValue.trim() : null,
       file_path: filePath,
       file_name: fileName,
       submitted_at: new Date().toISOString()
