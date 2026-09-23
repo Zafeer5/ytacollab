@@ -2,7 +2,13 @@ export function renderLandingPage(container, navigate) {
   container.innerHTML = `
     <div class="main-content">
       <div class="landing-hero" style="max-width: 480px; margin: 30px auto; padding: 36px 28px; background-color: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); text-align: center; box-shadow: var(--shadow);">
-        <div style="font-size: 44px; margin-bottom: 12px; line-height: 1;">⚡</div>
+        <div style="display: flex; justify-content: center; margin-bottom: 16px;">
+          <div style="width: 52px; height: 52px; border-radius: 14px; background: linear-gradient(135deg, var(--accent) 0%, #4338ca 100%); display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 14px rgba(99, 102, 241, 0.4);">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+          </div>
+        </div>
         <h1 style="font-size: 26px; font-weight: 800; margin-bottom: 12px; letter-spacing: -0.5px; color: var(--text-primary);">YTA - colabapp</h1>
         <div class="landing-intro" style="font-size: 14px; color: var(--text-muted); line-height: 1.6; margin-bottom: 28px;">
           Intro Content: Collaborative workflow application for managing YouTube channel content production. Coordinate channels, titles, scriptwriting, voiceover, thumbnails, and metadata across your creative team with an immutable ledger.
@@ -56,19 +62,19 @@ export function renderLandingPage(container, navigate) {
       guideEl.style.display = 'block';
       if (isIOS) {
         guideEl.innerHTML = `
-          <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">📱 Install on iPhone / iPad:</div>
+          <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">Install on iPhone / iPad:</div>
           <div>1. Tap the <strong>Share</strong> button (square icon with arrow pointing up) at the bottom of Safari.</div>
           <div>2. Scroll down and tap <strong>"Add to Home Screen"</strong>.</div>
         `;
       } else if (isAndroid) {
         guideEl.innerHTML = `
-          <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">📱 Install on Android:</div>
+          <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">Install on Android:</div>
           <div>1. Tap the <strong>three dots menu (⋮)</strong> in Chrome at top-right.</div>
           <div>2. Tap <strong>"Add to Home screen"</strong> or <strong>"Install app"</strong>.</div>
         `;
       } else {
         guideEl.innerHTML = `
-          <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">💻 Install on Desktop / Browser:</div>
+          <div style="font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">Install on Desktop / Browser:</div>
           <div>Click the <strong>Install</strong> icon in the address bar (top right), or open browser menu <strong>(⋮) > "Install YTA - colabapp"</strong>.</div>
         `;
       }

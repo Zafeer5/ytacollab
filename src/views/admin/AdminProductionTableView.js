@@ -1,4 +1,4 @@
-import { store, downloadFileSecurely } from '../../lib/store.js';
+import { store, downloadFileSecurely, openThumbnailModal } from '../../lib/store.js';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -91,39 +91,53 @@ export function renderAdminProductionTableView(container, navigate) {
             `
             : '<span class="helper-text">—</span>';
 
-        // Voiceover (inline audio preview player + secure download)
+        // Voiceover (in-browser audio player + secure download)
         const voHasValidUrl = Boolean(video.voiceover?.url && video.voiceover.url.startsWith('http'));
         const voContent = voStat.status === 'pending'
           ? '<span class="badge-pending">pending</span>'
           : video.voiceover
             ? `
-              <div style="display: flex; flex-direction: column; gap: 4px;">
-                <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px;">
+              <div class="table-audio-cell">
+                <div class="table-file-row">
+                  <span class="truncate-text" style="max-width: 110px; font-size: 11px; font-weight: 500;" title="${escapeHtml(video.voiceover.name)}">
+                    ${escapeHtml(video.voiceover.name)}
+                  </span>
                   ${voHasValidUrl ? `
-                    <button type="button" class="btn-download btn-download-secure" data-url="${escapeHtml(video.voiceover.url)}" data-filename="${escapeHtml(video.voiceover.name)}" title="Download voiceover" style="border: none; background: transparent; cursor: pointer; text-align: left; padding: 0;">
-                      ${escapeHtml(video.voiceover.name)}
+                    <button type="button" class="btn btn-secondary btn-sm btn-download-secure" data-url="${escapeHtml(video.voiceover.url)}" data-filename="${escapeHtml(video.voiceover.name)}" title="Download audio file" style="padding: 2px 7px; font-size: 10.5px; flex-shrink: 0;">
+                      Download
                     </button>
-                    <button type="button" class="btn-toggle-audio-player" data-target="audio-${video.id}" title="Play in browser" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border); border-radius: 3px; cursor: pointer; padding: 2px 6px; font-size: 11px; color: var(--text-primary); flex-shrink: 0;">
-                      ▶️
-                    </button>
-                  ` : `
-                    <span style="color: var(--text-muted); font-size: 12px;" title="File was not uploaded to cloud storage">${escapeHtml(video.voiceover.name)} <span style="font-size: 10px; color: #f59e0b;">(re-upload needed)</span></span>
-                  `}
+                  ` : ''}
                 </div>
-                ${voHasValidUrl ? `<audio id="audio-${video.id}" controls src="${video.voiceover.url}" preload="none" style="display: none; width: 100%; height: 28px; margin-top: 2px;"></audio>` : ''}
+                ${voHasValidUrl ? `
+                  <audio controls src="${video.voiceover.url}" preload="none" class="table-audio-player"></audio>
+                ` : `
+                  <span style="color: var(--text-muted); font-size: 11px;">(re-upload needed)</span>
+                `}
               </div>
             `
             : '<span class="helper-text">—</span>';
 
-        // Thumbnail (secure download)
+        // Thumbnail (click to preview popup modal + download)
+        const thumbHasValidUrl = Boolean(video.thumbnail?.url && video.thumbnail.url.startsWith('http'));
         const thumbContent = thumbStat.status === 'pending'
           ? '<span class="badge-pending">pending</span>'
           : video.thumbnail
-            ? `
-              <button type="button" class="btn-download btn-download-secure" data-url="${escapeHtml(video.thumbnail.url)}" data-filename="${escapeHtml(video.thumbnail.name)}" title="Download thumbnail" style="border: none; background: transparent; cursor: pointer; text-align: left; padding: 0;">
-                ${escapeHtml(video.thumbnail.name)}
-              </button>
-            `
+            ? thumbHasValidUrl
+              ? `
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <button type="button" class="thumb-preview-chip btn-preview-thumbnail" data-url="${escapeHtml(video.thumbnail.url)}" data-filename="${escapeHtml(video.thumbnail.name)}" title="Click to view thumbnail in browser">
+                    <img src="${escapeHtml(video.thumbnail.url)}" alt="thumbnail" loading="lazy" />
+                    <span class="thumb-chip-name">${escapeHtml(video.thumbnail.name)}</span>
+                    <span class="thumb-chip-action">View</span>
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm btn-download-secure" data-url="${escapeHtml(video.thumbnail.url)}" data-filename="${escapeHtml(video.thumbnail.name)}" title="Download thumbnail" style="padding: 3px 7px; font-size: 10.5px; flex-shrink: 0;">
+                    Download
+                  </button>
+                </div>
+              `
+              : `
+                <span style="color: var(--text-muted); font-size: 11px;">${escapeHtml(video.thumbnail.name)}</span>
+              `
             : '<span class="helper-text">—</span>';
 
         // Meta Info
@@ -348,22 +362,13 @@ export function renderAdminProductionTableView(container, navigate) {
       });
     });
 
-    // Toggle in-browser audio player
-    container.querySelectorAll('.btn-toggle-audio-player').forEach((btn) => {
+    // Thumbnail preview modal handler
+    container.querySelectorAll('.btn-preview-thumbnail').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.preventDefault();
-        const targetId = btn.dataset.target;
-        const player = container.querySelector(`#${targetId}`);
-        if (player) {
-          const isHidden = player.style.display === 'none';
-          player.style.display = isHidden ? 'block' : 'none';
-          btn.textContent = isHidden ? '⏸️' : '▶️';
-          if (isHidden) {
-            player.play().catch(() => {});
-          } else {
-            player.pause();
-          }
-        }
+        const url = btn.dataset.url;
+        const filename = btn.dataset.filename || 'thumbnail.png';
+        openThumbnailModal(url, filename);
       });
     });
 

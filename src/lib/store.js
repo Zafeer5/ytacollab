@@ -196,6 +196,77 @@ export async function downloadFileSecurely(url, filename = 'download') {
   }
 }
 
+// Opens a high-resolution thumbnail modal popup with a download button on top
+export function openThumbnailModal(url, filename = 'thumbnail.png') {
+  if (!url || url === '#' || url === 'undefined') {
+    alert('No thumbnail available to preview.');
+    return;
+  }
+
+  // Remove any previously open modal
+  const prevModal = document.getElementById('yta-thumbnail-modal');
+  if (prevModal) prevModal.remove();
+
+  const backdrop = document.createElement('div');
+  backdrop.id = 'yta-thumbnail-modal';
+  backdrop.className = 'thumbnail-modal-backdrop';
+
+  // Sanitize filename for display
+  const safeTitle = (filename || 'thumbnail.png').replace(/[<>&"]/g, '');
+
+  backdrop.innerHTML = `
+    <div class="thumbnail-modal-dialog" role="dialog" aria-modal="true" aria-label="Thumbnail Preview">
+      <div class="thumbnail-modal-header">
+        <div class="thumbnail-modal-title" title="${safeTitle}">
+          ${safeTitle}
+        </div>
+        <div class="thumbnail-modal-actions">
+          <button type="button" class="btn btn-primary btn-sm btn-modal-download" style="padding: 5px 14px; font-size: 12px; font-weight: 700;">
+            Download
+          </button>
+          <button type="button" class="thumbnail-modal-close" title="Close preview (Esc)">
+            ✕
+          </button>
+        </div>
+      </div>
+      <div class="thumbnail-modal-body">
+        <img src="${url}" alt="${safeTitle}" class="thumbnail-modal-image" />
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+
+  const closeModal = () => {
+    backdrop.remove();
+    document.removeEventListener('keydown', onKeyDown);
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === 'Escape') closeModal();
+  };
+
+  document.addEventListener('keydown', onKeyDown);
+
+  backdrop.querySelector('.thumbnail-modal-close').addEventListener('click', closeModal);
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) closeModal();
+  });
+
+  const dlBtn = backdrop.querySelector('.btn-modal-download');
+  dlBtn.addEventListener('click', async () => {
+    const origText = dlBtn.textContent;
+    dlBtn.textContent = 'Downloading...';
+    dlBtn.disabled = true;
+    try {
+      await downloadFileSecurely(url, filename);
+    } finally {
+      dlBtn.textContent = origText;
+      dlBtn.disabled = false;
+    }
+  });
+}
+
 function formatTimestamp(date = new Date()) {
   const d = new Date(date);
   const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });

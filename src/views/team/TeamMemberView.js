@@ -52,7 +52,6 @@ export function renderTeamMemberView(container, navigate) {
       return `
         <div class="prompts-container" style="padding: 8px 12px; margin-bottom: 10px; border: 1px dashed var(--border); border-radius: var(--radius); background: rgba(255,255,255,0.01);">
           <div style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
-            <span>ℹ️</span>
             <span>No ${roleName} prompts configured for ${channelLabel} yet.</span>
           </div>
         </div>
@@ -195,7 +194,7 @@ export function renderTeamMemberView(container, navigate) {
           channelPromptsPreview = `
             <div style="margin-top: 20px; text-align: left;">
               <h4 style="margin-bottom: 10px; font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
-                <span>📺</span> Prompts for <strong>${channelName}</strong> (${assignedPrompts.length} prompt${assignedPrompts.length > 1 ? 's' : ''} for your roles):
+                Prompts for <strong>${channelName}</strong> (${assignedPrompts.length} prompt${assignedPrompts.length > 1 ? 's' : ''} for your roles):
               </h4>
               <div class="prompts-container" style="max-height: 240px; overflow-y: auto;">
                 ${assignedPrompts.map((p) => `
@@ -219,7 +218,7 @@ export function renderTeamMemberView(container, navigate) {
         } else {
           channelPromptsPreview = `
             <div style="margin-top: 16px; padding: 10px 14px; border: 1px dashed var(--border); border-radius: var(--radius); background: rgba(255,255,255,0.01); text-align: center; font-size: 12px; color: var(--text-muted);">
-              ℹ️ No prompts currently configured for <strong>${channelName}</strong> for your assigned roles.
+              No prompts currently configured for <strong>${channelName}</strong> for your assigned roles.
             </div>
           `;
         }
@@ -227,7 +226,6 @@ export function renderTeamMemberView(container, navigate) {
 
       taskSectionsHtml = `
         <div class="card" style="padding: 28px 20px; text-align: center; border: 1px dashed var(--border); border-radius: var(--radius); margin-top: 16px;">
-          <div style="font-size: 32px; margin-bottom: 10px;">🎬</div>
           <h3 style="margin-bottom: 6px; font-size: 15px; color: var(--text-primary);">
             ${!selectedChannelId ? 'Select Channel' : 'Select Video #'}
           </h3>
@@ -270,7 +268,7 @@ export function renderTeamMemberView(container, navigate) {
               <div class="thumb-mini-preview">
                 ${currentVideo.thumbnail.url && currentVideo.thumbnail.url !== '#'
                   ? `<img src="${currentVideo.thumbnail.url}" alt="Thumbnail in database" />`
-                  : '<div style="width: 110px; height: 62px; display: flex; align-items: center; justify-content: center; background: #141416; border: 1px solid var(--border); border-radius: 4px; font-size: 20px;">🖼️</div>'
+                  : '<div style="width: 110px; height: 62px; display: flex; align-items: center; justify-content: center; background: #141416; border: 1px solid var(--border); border-radius: 4px; font-size: 11px; color: var(--text-muted);">No Preview</div>'
                 }
                 <div style="flex: 1; min-width: 0;">
                   <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${existingThumbName}</div>
@@ -415,15 +413,12 @@ export function renderTeamMemberView(container, navigate) {
             voPreviewHtml = `
               <div class="audio-player-container">
                 <div class="audio-meta">
-                  <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
-                    <span style="font-size: 20px;">🎵</span>
-                    <div style="min-width: 0;">
-                      <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(selectedVoFile.name)}</div>
-                      <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">Ready to submit (${Math.round(selectedVoFile.size / 1024)} KB) • Play below to review</div>
-                    </div>
+                  <div style="min-width: 0;">
+                    <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(selectedVoFile.name)}</div>
+                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">Ready to submit (${Math.round(selectedVoFile.size / 1024)} KB) • Play below to review in browser</div>
                   </div>
                 </div>
-                <audio controls src="${teamSession.voPreviewUrl}" preload="metadata"></audio>
+                <audio controls src="${teamSession.voPreviewUrl}" preload="metadata" style="width: 100%; height: 36px;"></audio>
               </div>
             `;
           } else if (hasExistingVo) {
@@ -431,22 +426,19 @@ export function renderTeamMemberView(container, navigate) {
             voPreviewHtml = `
               <div class="audio-player-container">
                 <div class="audio-meta">
-                  <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
-                    <span style="font-size: 20px;">🎵</span>
-                    <div style="min-width: 0;">
-                      <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(existingVoName)}</div>
-                      <div style="font-size: 11px; color: ${voUrlValid ? '#10b981' : '#f59e0b'}; font-weight: 600; margin-top: 1px;">
-                        ${voUrlValid ? '✓ Available in database • Listen or download below' : '⚠️ Cloud file missing • Please attach and submit audio file below'}
-                      </div>
+                  <div style="min-width: 0;">
+                    <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(existingVoName)}</div>
+                    <div style="font-size: 11px; color: ${voUrlValid ? '#10b981' : '#f59e0b'}; font-weight: 600; margin-top: 1px;">
+                      ${voUrlValid ? '✓ Available in database • Listen in browser or download below' : 'File missing from storage • Please re-upload below'}
                     </div>
                   </div>
                   ${voUrlValid ? `
                     <button type="button" class="btn btn-secondary btn-sm btn-download-vo" data-url="${escapeHtml(currentVideo.voiceover.url)}" data-filename="${escapeHtml(existingVoName)}" title="Download audio">
-                      ⬇️ Download
+                      Download
                     </button>
                   ` : ''}
                 </div>
-                ${voUrlValid ? `<audio controls src="${currentVideo.voiceover.url}" preload="metadata"></audio>` : ''}
+                ${voUrlValid ? `<audio controls src="${currentVideo.voiceover.url}" preload="metadata" style="width: 100%; height: 36px;"></audio>` : ''}
               </div>
             `;
           }
@@ -805,7 +797,7 @@ export function renderTeamMemberView(container, navigate) {
       submitThumbBtn.addEventListener('click', async () => {
         const file = teamSession.localFiles['thumbnail'];
         if (!file) {
-          teamSession.taskFeedback['thumbnail'] = '⚠️ Please select or attach an image file first before submitting.';
+          teamSession.taskFeedback['thumbnail'] = 'Please select or attach an image file first before submitting.';
           render();
           return;
         }
@@ -836,7 +828,7 @@ export function renderTeamMemberView(container, navigate) {
           teamSession.submissionStatus['thumbnail'] = 'Submitted';
           teamSession.taskFeedback['thumbnail'] = `✓ Thumbnail "${file.name}" successfully saved to database!`;
         } else {
-          teamSession.taskFeedback['thumbnail'] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
+          teamSession.taskFeedback['thumbnail'] = `Submission error: ${res.error || 'Failed to submit'}`;
         }
         render();
       });
@@ -849,7 +841,7 @@ export function renderTeamMemberView(container, navigate) {
         const inputEl = container.querySelector('#input-meta-info');
         const textVal = (inputEl?.value || teamSession.inProgressDrafts['meta'] || '').trim();
         if (!textVal) {
-          teamSession.taskFeedback['meta'] = '⚠️ Please enter Meta information (description & tags) before submitting.';
+          teamSession.taskFeedback['meta'] = 'Please enter Meta information (description & tags) before submitting.';
           render();
           return;
         }
@@ -874,7 +866,7 @@ export function renderTeamMemberView(container, navigate) {
           teamSession.submissionStatus['meta'] = 'Submitted';
           teamSession.taskFeedback['meta'] = '✓ Meta Info successfully saved to database!';
         } else {
-          teamSession.taskFeedback['meta'] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
+          teamSession.taskFeedback['meta'] = `Submission error: ${res.error || 'Failed to submit'}`;
         }
         render();
       });
@@ -887,7 +879,7 @@ export function renderTeamMemberView(container, navigate) {
         const inputEl = container.querySelector('#input-script-text');
         const scriptVal = (inputEl?.value || teamSession.inProgressDrafts['script'] || '').trim();
         if (!scriptVal) {
-          teamSession.taskFeedback['script'] = '⚠️ Please enter script content before submitting.';
+          teamSession.taskFeedback['script'] = 'Please enter script content before submitting.';
           render();
           return;
         }
@@ -912,7 +904,7 @@ export function renderTeamMemberView(container, navigate) {
           teamSession.submissionStatus['script'] = 'Submitted';
           teamSession.taskFeedback['script'] = '✓ Script successfully saved to database!';
         } else {
-          teamSession.taskFeedback['script'] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
+          teamSession.taskFeedback['script'] = `Submission error: ${res.error || 'Failed to submit'}`;
         }
         render();
       });
@@ -955,7 +947,7 @@ export function renderTeamMemberView(container, navigate) {
       submitVoBtn.addEventListener('click', async () => {
         const file = teamSession.localFiles['voiceover'];
         if (!file) {
-          teamSession.taskFeedback['voiceover'] = '⚠️ Please select or attach an audio voiceover file first.';
+          teamSession.taskFeedback['voiceover'] = 'Please select or attach an audio voiceover file first.';
           render();
           return;
         }
@@ -984,7 +976,7 @@ export function renderTeamMemberView(container, navigate) {
           teamSession.submissionStatus['voiceover'] = 'Submitted';
           teamSession.taskFeedback['voiceover'] = `✓ Voiceover "${file.name}" successfully saved to database!`;
         } else {
-          teamSession.taskFeedback['voiceover'] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
+          teamSession.taskFeedback['voiceover'] = `Submission error: ${res.error || 'Failed to submit'}`;
         }
         render();
       });
@@ -1033,7 +1025,7 @@ export function renderTeamMemberView(container, navigate) {
         const role = e.target.dataset.role;
         const file = teamSession.localFiles[role];
         if (!file) {
-          teamSession.taskFeedback[role] = `⚠️ Please attach a file for ${role} before submitting.`;
+          teamSession.taskFeedback[role] = `Please attach a file for ${role} before submitting.`;
           render();
           return;
         }
@@ -1055,7 +1047,7 @@ export function renderTeamMemberView(container, navigate) {
           teamSession.submissionStatus[role] = 'Submitted';
           teamSession.taskFeedback[role] = `✓ ${role} "${file.name}" successfully saved to database!`;
         } else {
-          teamSession.taskFeedback[role] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
+          teamSession.taskFeedback[role] = `Submission error: ${res.error || 'Failed to submit'}`;
         }
         render();
       });
@@ -1066,7 +1058,7 @@ export function renderTeamMemberView(container, navigate) {
         const role = e.target.dataset.role;
         const val = (container.querySelector(`#input-val-${role}`)?.value || '').trim();
         if (!val) {
-          teamSession.taskFeedback[role] = `⚠️ Please enter a number for ${role} before submitting.`;
+          teamSession.taskFeedback[role] = `Please enter a number for ${role} before submitting.`;
           render();
           return;
         }
@@ -1088,7 +1080,7 @@ export function renderTeamMemberView(container, navigate) {
           teamSession.submissionStatus[role] = 'Submitted';
           teamSession.taskFeedback[role] = `✓ ${role} successfully saved to database!`;
         } else {
-          teamSession.taskFeedback[role] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
+          teamSession.taskFeedback[role] = `Submission error: ${res.error || 'Failed to submit'}`;
         }
         render();
       });
@@ -1099,7 +1091,7 @@ export function renderTeamMemberView(container, navigate) {
         const role = e.target.dataset.role;
         const val = (container.querySelector(`#input-val-${role}`)?.value || '').trim();
         if (!val) {
-          teamSession.taskFeedback[role] = `⚠️ Please enter text for ${role} before submitting.`;
+          teamSession.taskFeedback[role] = `Please enter text for ${role} before submitting.`;
           render();
           return;
         }
@@ -1121,7 +1113,7 @@ export function renderTeamMemberView(container, navigate) {
           teamSession.submissionStatus[role] = 'Submitted';
           teamSession.taskFeedback[role] = `✓ ${role} successfully saved to database!`;
         } else {
-          teamSession.taskFeedback[role] = `⚠️ Submission error: ${res.error || 'Failed to submit'}`;
+          teamSession.taskFeedback[role] = `Submission error: ${res.error || 'Failed to submit'}`;
         }
         render();
       });

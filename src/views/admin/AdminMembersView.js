@@ -3,6 +3,9 @@ import { store } from '../../lib/store.js';
 // Module-level staged edits so store updates/refreshes do not erase in-progress changes
 let stagedEdits = {}; // id -> { username, password, roles, isDeleted }
 
+const EYE_OPEN_SVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+const EYE_OFF_SVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
+
 export function renderAdminMembersView(container, navigate) {
   let feedbackMessage = '';
   let newUserType = 'member'; // 'member' or 'admin'
@@ -69,7 +72,7 @@ export function renderAdminMembersView(container, navigate) {
         // Team member can be deleted by Owner or Admin.
         let actionButtonHtml = '';
         if (isThisOwner) {
-          actionButtonHtml = '<span class="helper-text" style="color: #f87171; font-weight: 600; font-size: 11px;">👑 Protected Owner Account</span>';
+          actionButtonHtml = '<span class="helper-text" style="color: #f87171; font-weight: 600; font-size: 11px;">Protected Owner Account</span>';
         } else if (isThisAdmin) {
           if (isCurrentUserOwner) {
             actionButtonHtml = member.isDeleted
@@ -117,7 +120,7 @@ export function renderAdminMembersView(container, navigate) {
               member.isDeleted
                 ? `
                   <div style="padding: 8px 12px; background: rgba(239, 68, 68, 0.12); border-radius: 4px; color: #f87171; font-size: 12px; display: flex; align-items: center; justify-content: space-between;">
-                    <span>⚠️ Marked for deletion. Click <strong>Save Updates</strong> below to permanently delete this user.</span>
+                    <span>Marked for deletion. Click <strong>Save Changes</strong> below to permanently delete this user.</span>
                     <button type="button" class="btn btn-secondary btn-sm btn-undo-delete" data-id="${member.id}" style="height: 28px; padding: 0 10px;">Undo</button>
                   </div>
                 `
@@ -140,7 +143,7 @@ export function renderAdminMembersView(container, navigate) {
 
                     <div>
                       <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px; font-weight: 500;">
-                        Password ${canEditCredentials ? '(Click 👁️ to view or edit)' : '(Hidden)'}
+                        Password ${canEditCredentials ? '(Click to view or edit)' : '(Hidden)'}
                       </label>
                       <div style="position: relative; display: flex; align-items: center;">
                         <input 
@@ -158,10 +161,10 @@ export function renderAdminMembersView(container, navigate) {
                           type="button" 
                           class="btn-toggle-eye" 
                           data-target="pass-input-${member.id}" 
-                          style="position: absolute; right: 6px; background: transparent; border: none; cursor: pointer; font-size: 15px; padding: 4px 6px; color: var(--text-muted);" 
+                          style="position: absolute; right: 6px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; padding: 4px 6px; color: var(--text-muted);" 
                           title="Show/Hide Password"
                         >
-                          👁️
+                          ${EYE_OPEN_SVG}
                         </button>
                       </div>
                     </div>
@@ -196,7 +199,7 @@ export function renderAdminMembersView(container, navigate) {
                       `
                       : `
                         <div style="font-size: 12px; color: var(--text-muted); font-style: italic; padding: 4px 2px;">
-                          ⚡ ${isThisOwner ? 'Owner Account — Complete system authority. No task roles needed.' : 'Administrative Account — Full access across production, channels, and admin panel.'}
+                          ${isThisOwner ? 'Owner Account — Complete system authority. No task roles needed.' : 'Administrative Account — Full access across production, channels, and admin panel.'}
                         </div>
                       `
                   }
@@ -223,11 +226,11 @@ export function renderAdminMembersView(container, navigate) {
               <div style="display: flex; gap: 12px; flex-wrap: wrap;">
                 <label style="cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 8px 16px; border: 1px solid ${newUserType === 'member' ? 'var(--accent)' : 'var(--border)'}; border-radius: var(--radius); background: ${newUserType === 'member' ? 'rgba(99, 102, 241, 0.12)' : 'var(--bg)'}; font-size: 13px; font-weight: 500;">
                   <input type="radio" name="new-user-type" value="member" ${newUserType === 'member' ? 'checked' : ''} style="margin: 0;" />
-                  <span>👤 Team Member</span>
+                  <span>Team Member</span>
                 </label>
                 <label style="cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 8px 16px; border: 1px solid ${newUserType === 'admin' ? 'var(--accent)' : 'var(--border)'}; border-radius: var(--radius); background: ${newUserType === 'admin' ? 'rgba(99, 102, 241, 0.12)' : 'var(--bg)'}; font-size: 13px; font-weight: 500;">
                   <input type="radio" name="new-user-type" value="admin" ${newUserType === 'admin' ? 'checked' : ''} style="margin: 0;" />
-                  <span>🛡️ Admin (Full Admin Access)</span>
+                  <span>Admin (Full Admin Access)</span>
                 </label>
               </div>
             </div>
@@ -242,7 +245,7 @@ export function renderAdminMembersView(container, navigate) {
                 <label for="new-member-pass">Password</label>
                 <div style="position: relative; display: flex; align-items: center;">
                   <input type="password" id="new-member-pass" placeholder="Create password" required autocomplete="new-password" style="padding-right: 36px; font-family: monospace;" />
-                  <button type="button" class="btn-toggle-eye" data-target="new-member-pass" style="position: absolute; right: 6px; background: transparent; border: none; cursor: pointer; font-size: 15px; padding: 4px 6px; color: var(--text-muted);" title="Show/Hide Password">👁️</button>
+                  <button type="button" class="btn-toggle-eye" data-target="new-member-pass" style="position: absolute; right: 6px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; padding: 4px 6px; color: var(--text-muted);" title="Show/Hide Password">${EYE_OPEN_SVG}</button>
                 </div>
               </div>
             </div>
@@ -267,7 +270,7 @@ export function renderAdminMembersView(container, navigate) {
                 `
                 : `
                   <div style="margin-bottom: 16px; padding: 10px 14px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: var(--radius); font-size: 12px; color: var(--text-primary);">
-                    🛡️ <strong>Admin Account:</strong> Admins receive complete management privileges across the Production Table, Channels, Videos, and Roles. No task roles are required.
+                    <strong>Admin Account:</strong> Admins receive complete management privileges across the Production Table, Channels, Videos, and Roles. No task roles are required.
                   </div>
                 `
             }
@@ -282,7 +285,7 @@ export function renderAdminMembersView(container, navigate) {
       creationSectionHtml = `
         <div class="card" style="padding: 16px 20px; background: rgba(255, 255, 255, 0.02); border: 1px dashed var(--border); border-radius: var(--radius); margin-bottom: 24px;">
           <div style="display: flex; align-items: center; gap: 12px;">
-            <span style="font-size: 24px;">🛡️</span>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent); flex-shrink: 0;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
             <div>
               <strong style="color: var(--text-primary); font-size: 13px;">User Creation Restricted</strong>
               <div class="helper-text" style="font-size: 12px; margin-top: 2px;">
@@ -311,7 +314,7 @@ export function renderAdminMembersView(container, navigate) {
                 hasPendingEdits()
                   ? `
                     <div style="display: flex; gap: 8px; align-items: center;">
-                      <span class="sidebar-tag" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); font-weight: 700; padding: 4px 10px;">⚠️ Unsaved Changes</span>
+                      <span class="sidebar-tag" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); font-weight: 700; padding: 4px 10px;">Unsaved Changes</span>
                       <button type="button" class="btn btn-primary btn-sm btn-save-changes-trigger" ${isSaving ? 'disabled' : ''} style="height: 30px;">
                         ${isSaving ? 'Saving...' : 'Save Changes'}
                       </button>
@@ -344,7 +347,7 @@ export function renderAdminMembersView(container, navigate) {
                 ${!hasPendingEdits() || isSaving ? 'disabled' : ''} 
                 style="height: 38px; min-width: 170px; font-weight: 700;"
               >
-                ${isSaving ? 'Saving Changes...' : '💾 Save Changes'}
+                ${isSaving ? 'Saving Changes...' : 'Save Changes'}
               </button>
             </div>
           </div>
@@ -365,11 +368,11 @@ export function renderAdminMembersView(container, navigate) {
         if (input) {
           if (input.type === 'password') {
             input.type = 'text';
-            btn.textContent = '🙈';
+            btn.innerHTML = EYE_OFF_SVG;
             btn.title = 'Hide Password';
           } else {
             input.type = 'password';
-            btn.textContent = '👁️';
+            btn.innerHTML = EYE_OPEN_SVG;
             btn.title = 'Show Password';
           }
         }
@@ -411,7 +414,7 @@ export function renderAdminMembersView(container, navigate) {
           uInput.value = '';
           pInput.value = '';
         } else {
-          feedbackMessage = `⚠️ ${res.error || 'Failed to create user.'}`;
+          feedbackMessage = res.error || 'Failed to create user.';
         }
 
         submitBtn.disabled = false;
@@ -537,7 +540,7 @@ export function renderAdminMembersView(container, navigate) {
         stagedEdits = {};
         feedbackMessage = `✓ All changes (${res.savedCount || (modified.length + deletedIds.length)}) successfully saved to the database!`;
       } else {
-        feedbackMessage = `⚠️ Error saving: ${(res.errors || []).join('; ')}`;
+        feedbackMessage = `Error saving: ${(res.errors || []).join('; ')}`;
       }
 
       render();

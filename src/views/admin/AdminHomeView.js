@@ -1,4 +1,4 @@
-import { store, downloadFileSecurely } from '../../lib/store.js';
+import { store, downloadFileSecurely, openThumbnailModal } from '../../lib/store.js';
 
 export function renderAdminHomeView(container, navigate) {
   let selectedChannelId = '';
@@ -93,29 +93,51 @@ export function renderAdminHomeView(container, navigate) {
             `
             : '<span class="helper-text">—</span>';
 
-        // Render Voiceover cell (downloadable file)
+        // Render Voiceover cell (in-browser audio player + download)
         const voHasValidUrl = Boolean(video.voiceover?.url && video.voiceover.url.startsWith('http'));
         const voContent = voStat.status === 'pending'
           ? '<span class="badge-pending">pending</span>'
           : video.voiceover
-            ? voHasValidUrl
-              ? `
-                <button type="button" class="btn-download btn-download-secure" data-url="${video.voiceover.url}" data-filename="${video.voiceover.name}" title="Download voiceover" style="border: none; background: transparent; cursor: pointer; text-align: left; padding: 0;">
-                  ${video.voiceover.name}
-                </button>
-              `
-              : `<span style="color: var(--text-muted); font-size: 12px;">${video.voiceover.name} <span style="font-size: 10px; color: #f59e0b;">(re-upload needed)</span></span>`
+            ? `
+              <div class="table-audio-cell">
+                <div class="table-file-row">
+                  <span class="truncate-text" style="max-width: 100px; font-size: 11px; font-weight: 500;" title="${video.voiceover.name}">
+                    ${video.voiceover.name}
+                  </span>
+                  ${voHasValidUrl ? `
+                    <button type="button" class="btn btn-secondary btn-sm btn-download-secure" data-url="${video.voiceover.url}" data-filename="${video.voiceover.name}" title="Download voiceover" style="padding: 2px 6px; font-size: 10.5px; flex-shrink: 0;">
+                      Download
+                    </button>
+                  ` : ''}
+                </div>
+                ${voHasValidUrl ? `
+                  <audio controls src="${video.voiceover.url}" preload="none" class="table-audio-player"></audio>
+                ` : `
+                  <span style="color: var(--text-muted); font-size: 11px;">(re-upload needed)</span>
+                `}
+              </div>
+            `
             : '<span class="helper-text">—</span>';
 
-        // Render Thumbnail cell (downloadable file)
+        // Render Thumbnail cell (preview popup modal + download)
+        const thumbHasValidUrl = Boolean(video.thumbnail?.url && video.thumbnail.url.startsWith('http'));
         const thumbContent = thumbStat.status === 'pending'
           ? '<span class="badge-pending">pending</span>'
           : video.thumbnail
-            ? `
-              <button type="button" class="btn-download btn-download-secure" data-url="${video.thumbnail.url}" data-filename="${video.thumbnail.name}" title="Download thumbnail" style="border: none; background: transparent; cursor: pointer; text-align: left; padding: 0;">
-                ${video.thumbnail.name}
-              </button>
-            `
+            ? thumbHasValidUrl
+              ? `
+                <div style="display: flex; align-items: center; gap: 6px;">
+                  <button type="button" class="thumb-preview-chip btn-preview-thumbnail" data-url="${video.thumbnail.url}" data-filename="${video.thumbnail.name}" title="Click to view thumbnail in browser">
+                    <img src="${video.thumbnail.url}" alt="thumbnail" loading="lazy" />
+                    <span class="thumb-chip-name">${video.thumbnail.name}</span>
+                    <span class="thumb-chip-action">View</span>
+                  </button>
+                  <button type="button" class="btn btn-secondary btn-sm btn-download-secure" data-url="${video.thumbnail.url}" data-filename="${video.thumbnail.name}" title="Download thumbnail" style="padding: 3px 6px; font-size: 10.5px; flex-shrink: 0;">
+                    Download
+                  </button>
+                </div>
+              `
+              : `<span style="color: var(--text-muted); font-size: 11px;">${video.thumbnail.name}</span>`
             : '<span class="helper-text">—</span>';
 
         // Render Meta Info cell (copyable as text)
@@ -335,6 +357,16 @@ export function renderAdminHomeView(container, navigate) {
 
         await store.updateMemberRoles(memberId, newRoles);
         render();
+      });
+    });
+
+    // Thumbnail preview modal handler
+    container.querySelectorAll('.btn-preview-thumbnail').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const url = btn.dataset.url;
+        const filename = btn.dataset.filename || 'thumbnail.png';
+        openThumbnailModal(url, filename);
       });
     });
 

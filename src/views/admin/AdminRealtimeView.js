@@ -79,9 +79,9 @@ export function renderAdminRealtimeView(container, navigate) {
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
             <h2>Team Member Role Assignments</h2>
             <div style="display: flex; gap: 8px; align-items: center;">
-              ${hasPending ? '<span class="sidebar-tag" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); font-weight: 700; padding: 4px 10px;">⚠️ Unsaved Role Changes</span>' : ''}
+              ${hasPending ? '<span class="sidebar-tag" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); font-weight: 700; padding: 4px 10px;">Unsaved Role Changes</span>' : ''}
               <button type="button" id="btn-save-realtime-roles" class="btn btn-primary btn-cta" ${!hasPending || isSaving ? 'disabled' : ''} style="height: 34px;">
-                ${isSaving ? 'Saving...' : '💾 Save Role Changes'}
+                ${isSaving ? 'Saving...' : 'Save Role Changes'}
               </button>
             </div>
           </div>
@@ -133,7 +133,7 @@ export function renderAdminRealtimeView(container, navigate) {
           stagedRoles = {};
           feedbackMessage = `✓ Role changes successfully saved to database!`;
         } else {
-          feedbackMessage = `⚠️ Error saving roles: ${res.error || 'Failed to update'}`;
+          feedbackMessage = `Error saving roles: ${res.error || 'Failed to update'}`;
         }
         render();
       });

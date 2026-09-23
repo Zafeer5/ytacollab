@@ -4,7 +4,7 @@ export function renderLoginPage(container, navigate) {
   const state = store.getState();
   const schemaWarning = !state.schemaReady && state.lastError
     ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); font-size: 12px; margin-bottom: 14px;">
-        ⚠️ <strong>Database Setup Required:</strong> Please run <code>supabase/schema.sql</code> in your Supabase SQL Editor to initialize tables and authentication.
+        <strong>Database Setup Required:</strong> Please run <code>supabase/schema.sql</code> in your Supabase SQL Editor to initialize tables and authentication.
        </div>`
     : '';
 

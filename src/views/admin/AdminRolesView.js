@@ -103,7 +103,7 @@ export function renderAdminRolesView(container, navigate) {
           <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
               <span class="sidebar-tag" style="background: rgba(99, 102, 241, 0.12); color: #818cf8; border-color: rgba(99, 102, 241, 0.3); font-weight: 500;">
-                📺 ${escapeHtml(p.channelName || 'All Channels')}
+                ${escapeHtml(p.channelName || 'All Channels')}
               </span>
               <span class="sidebar-tag" style="color: var(--text-primary); border-color: var(--text-primary);">
                 ${escapeHtml(p.roleName)}
@@ -122,9 +122,9 @@ export function renderAdminRolesView(container, navigate) {
       ? [
           `<option value="" ${!selectedPromptChannel ? 'selected' : ''}>-- Select Target Channel --</option>`,
           ...channels.map((c) => `<option value="${c.id}" ${c.id === selectedPromptChannel ? 'selected' : ''}>${escapeHtml(c.name)}</option>`),
-          `<option value="__all__" ${selectedPromptChannel === '__all__' ? 'selected' : ''}>🌐 All Channels (Global Prompt)</option>`
+          `<option value="__all__" ${selectedPromptChannel === '__all__' ? 'selected' : ''}>All Channels (Global Prompt)</option>`
         ].join('')
-      : `<option value="__all__">🌐 All Channels (No specific channels created yet)</option>`;
+      : `<option value="__all__">All Channels (No specific channels created yet)</option>`;
 
     // Role options for prompt form
     const roleOptions = roles
@@ -368,7 +368,7 @@ export function renderAdminRolesView(container, navigate) {
         const tInput = container.querySelector('#prompt-text-input');
 
         if (!cSelect.value) {
-          feedbackMessage = '⚠️ Please select a Target Channel for this prompt.';
+          feedbackMessage = 'Please select a Target Channel for this prompt.';
           render();
           return;
         }
