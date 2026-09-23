@@ -1,4 +1,4 @@
-import { store } from '../../lib/store.js';
+import { store, downloadFileSecurely } from '../../lib/store.js';
 
 export function renderAdminHomeView(container, navigate) {
   let selectedChannelId = '';
@@ -98,9 +98,9 @@ export function renderAdminHomeView(container, navigate) {
           ? '<span class="badge-pending">pending</span>'
           : video.voiceover
             ? `
-              <a href="${video.voiceover.url}" download="${video.voiceover.name}" class="btn-download">
+              <button type="button" class="btn-download btn-download-secure" data-url="${video.voiceover.url}" data-filename="${video.voiceover.name}" title="Download voiceover" style="border: none; background: transparent; cursor: pointer; text-align: left; padding: 0;">
                 ${video.voiceover.name}
-              </a>
+              </button>
             `
             : '<span class="helper-text">—</span>';
 
@@ -109,9 +109,9 @@ export function renderAdminHomeView(container, navigate) {
           ? '<span class="badge-pending">pending</span>'
           : video.thumbnail
             ? `
-              <a href="${video.thumbnail.url}" download="${video.thumbnail.name}" class="btn-download">
+              <button type="button" class="btn-download btn-download-secure" data-url="${video.thumbnail.url}" data-filename="${video.thumbnail.name}" title="Download thumbnail" style="border: none; background: transparent; cursor: pointer; text-align: left; padding: 0;">
                 ${video.thumbnail.name}
-              </a>
+              </button>
             `
             : '<span class="helper-text">—</span>';
 
@@ -332,6 +332,26 @@ export function renderAdminHomeView(container, navigate) {
 
         await store.updateMemberRoles(memberId, newRoles);
         render();
+      });
+    });
+
+    // Secure in-browser file download handler
+    container.querySelectorAll('.btn-download-secure').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const url = btn.dataset.url;
+        const filename = btn.dataset.filename || 'download';
+        const origText = btn.innerHTML;
+        btn.textContent = 'Downloading...';
+        btn.disabled = true;
+        try {
+          await downloadFileSecurely(url, filename);
+        } catch (err) {
+          console.error('Download error:', err);
+        } finally {
+          btn.innerHTML = origText;
+          btn.disabled = false;
+        }
       });
     });
   }

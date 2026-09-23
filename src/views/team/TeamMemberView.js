@@ -994,9 +994,14 @@ export function renderTeamMemberView(container, navigate) {
         const origText = btn.innerHTML;
         btn.textContent = 'Downloading...';
         btn.disabled = true;
-        await downloadFileSecurely(url, filename);
-        btn.innerHTML = origText;
-        btn.disabled = false;
+        try {
+          await downloadFileSecurely(url, filename);
+        } catch (dlErr) {
+          console.error('Voiceover download error:', dlErr);
+        } finally {
+          btn.innerHTML = origText;
+          btn.disabled = false;
+        }
       });
     });
 

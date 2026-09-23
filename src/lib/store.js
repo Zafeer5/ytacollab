@@ -6,29 +6,159 @@
 
 import { supabase, supabaseAuthHelper, uploadStorageFile } from './supabase.js';
 
-// Secure in-browser file download helper (bypasses cross-origin/blob errors)
+// Helper to parse Supabase bucket and path from various URL structures or storage paths
+export function parseSupabaseStorageUrl(url) {
+  if (!url || typeof url !== 'string' || url === '#' || url === 'undefined') {
+    return null;
+  }
+
+  // 1. Matches standard Supabase storage URLs:
+  // e.g. https://<project>.supabase.co/storage/v1/object/public/<bucket>/<path>
+  // e.g. https://<project>.supabase.co/storage/v1/object/authenticated/<bucket>/<path>
+  // e.g. https://<project>.supabase.co/storage/v1/object/sign/<bucket>/<path>
+  // e.g. /storage/v1/object/public/<bucket>/<path>
+  const storageObjectRegex = /\/storage\/v1\/object\/(?:public\/|authenticated\/|sign\/)?([^/?#]+)\/(.+)$/;
+  const match = url.match(storageObjectRegex);
+  if (match) {
+    const bucket = match[1];
+    const pathWithoutQuery = match[2].split('?')[0].split('#')[0];
+    let path = decodeURIComponent(pathWithoutQuery);
+    // Remove redundant leading bucket if path was saved as "voiceovers/vid_1/..."
+    if (path.startsWith(`${bucket}/`)) {
+      path = path.slice(bucket.length + 1);
+    }
+    return { bucket, path };
+  }
+
+  // 2. Relative paths starting with known bucket names: e.g. "voiceovers/vid_1/abc.wav"
+  const knownBuckets = ['voiceovers', 'thumbnails'];
+  for (const b of knownBuckets) {
+    if (url.startsWith(`${b}/`)) {
+      const pathWithoutQuery = url.slice(b.length + 1).split('?')[0].split('#')[0];
+      return {
+        bucket: b,
+        path: decodeURIComponent(pathWithoutQuery)
+      };
+    }
+  }
+
+  // 3. Relative file paths without bucket: e.g. "vid_1/1789463623_abc.wav"
+  if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('blob:') && !url.startsWith('data:')) {
+    const clean = url.split('?')[0].split('#')[0];
+    const ext = clean.split('.').pop()?.toLowerCase();
+    const isAudio = ['wav', 'mp3', 'm4a', 'aac', 'ogg', 'flac'].includes(ext);
+    const isImage = ['png', 'jpg', 'jpeg', 'webp', 'svg', 'gif'].includes(ext);
+    if (isAudio) return { bucket: 'voiceovers', path: decodeURIComponent(clean) };
+    if (isImage) return { bucket: 'thumbnails', path: decodeURIComponent(clean) };
+  }
+
+  return null;
+}
+
+// Secure in-browser file download helper with explicit error handling and delayed revoke
 export async function downloadFileSecurely(url, filename = 'download') {
   if (!url || url === '#' || url === 'undefined') {
     alert('No file available to download.');
     return;
   }
 
-  try {
-    // 1. Direct Blob URL
-    if (url.startsWith('blob:')) {
+  // 1. Direct Blob URL (e.g., local preview before upload)
+  if (url.startsWith('blob:')) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    return;
+  }
+
+  // 2. Check if URL points to Supabase Storage
+  const storageInfo = parseSupabaseStorageUrl(url);
+
+  if (storageInfo) {
+    const { bucket, path } = storageInfo;
+    console.log(`[Supabase Storage] Initiating download from bucket: "${bucket}", path: "${path}"`);
+
+    try {
+      // Primary: Use Supabase SDK download (authenticated & handles private/public buckets)
+      let { data, error } = await supabase.storage.from(bucket).download(path);
+
+      // If clean path failed with 404, retry with full prefixed path if different
+      if (error && !path.startsWith(`${bucket}/`)) {
+        const retryRes = await supabase.storage.from(bucket).download(`${bucket}/${path}`);
+        if (!retryRes.error && retryRes.data) {
+          data = retryRes.data;
+          error = null;
+        }
+      }
+
+      // Explicitly check for a Supabase download error and log it, preventing blob creation if error exists
+      if (error) {
+        console.error(`[Supabase Storage Download Error] Failed to download "${path}" from bucket "${bucket}":`, error);
+        alert(`Download failed: ${error.message || 'File could not be found or downloaded from Supabase storage.'}`);
+        return; // Prevent blob creation and stop execution
+      }
+
+      // Check for empty data / blob
+      if (!data || data.size === 0) {
+        console.error(`[Supabase Storage Download Error] Supabase returned empty data (0 bytes) for "${path}" in bucket "${bucket}".`);
+        alert('Download failed: The requested file is empty or missing from storage.');
+        return; // Prevent empty blob creation
+      }
+
+      // Deduce file extension for filename if missing or generic
+      let safeFilename = filename;
+      if (safeFilename === 'download' || !safeFilename.includes('.')) {
+        const ext = path.split('.').pop();
+        if (ext && ext !== path) {
+          safeFilename = safeFilename === 'download' ? `voiceover.${ext}` : `${safeFilename}.${ext}`;
+        }
+      }
+
+      // Create blob URL and initiate download
+      const blobUrl = URL.createObjectURL(data);
       const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
+      a.href = blobUrl;
+      a.download = safeFilename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
+
+      // Wrap the URL.revokeObjectURL(url) cleanup step in a setTimeout of at least 1000ms
+      setTimeout(() => {
+        try {
+          URL.revokeObjectURL(blobUrl);
+        } catch (revErr) {
+          console.warn('URL.revokeObjectURL cleanup error:', revErr);
+        }
+      }, 2000); // 2000ms ensures browser download manager has time to initiate download
+
+      return;
+    } catch (storageErr) {
+      console.error('[Supabase Storage] Unexpected exception during download:', storageErr);
+      alert(`Download failed: ${storageErr.message || 'Storage download error'}`);
+      return;
+    }
+  }
+
+  // 3. Fallback for external HTTP/HTTPS files
+  try {
+    console.log(`[File Download] Fetching external file: ${url}`);
+    const response = await fetch(url, { mode: 'cors' });
+    if (!response.ok) {
+      console.error(`[File Download Error] HTTP ${response.status} ${response.statusText} fetching ${url}`);
+      alert(`Download failed: Server returned HTTP ${response.status}`);
       return;
     }
 
-    // 2. Fetch as Blob to prevent cross-origin 403/browser handling errors
-    const response = await fetch(url, { mode: 'cors' });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const blob = await response.blob();
+    if (!blob || blob.size === 0) {
+      console.error('[File Download Error] Fetched file is empty (0 bytes).');
+      alert('Download failed: The file is empty.');
+      return;
+    }
+
     const blobUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = blobUrl;
@@ -36,45 +166,18 @@ export async function downloadFileSecurely(url, filename = 'download') {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
-  } catch (err) {
-    console.warn('Direct blob fetch failed, trying fallback download mechanism:', err);
 
-    // Fallback A: Supabase storage SDK download
-    try {
-      if (url.includes('/storage/v1/object/public/')) {
-        const parts = url.split('/storage/v1/object/public/')[1];
-        if (parts) {
-          const slashIdx = parts.indexOf('/');
-          const bucket = parts.substring(0, slashIdx);
-          const path = decodeURIComponent(parts.substring(slashIdx + 1));
-          const { data, error } = await supabase.storage.from(bucket).download(path);
-          if (!error && data) {
-            const blobUrl = URL.createObjectURL(data);
-            const a = document.createElement('a');
-            a.href = blobUrl;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
-            return;
-          }
-        }
+    // Wrap revoke in setTimeout of at least 1000ms
+    setTimeout(() => {
+      try {
+        URL.revokeObjectURL(blobUrl);
+      } catch (revErr) {
+        console.warn('URL.revokeObjectURL cleanup error:', revErr);
       }
-    } catch (sErr) {
-      console.warn('Storage SDK download fallback failed:', sErr);
-    }
-
-    // Fallback B: New window / tab direct link
-    const a = document.createElement('a');
-    a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    }, 2000);
+  } catch (err) {
+    console.error('[File Download Error] Network or fetch error downloading file:', err);
+    alert(`Download failed: ${err.message || 'Could not download file.'}`);
   }
 }
 
