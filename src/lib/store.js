@@ -64,13 +64,28 @@ export async function downloadFileSecurely(url, filename = 'download') {
 
   // 1. Direct Blob URL (e.g., local preview before upload)
   if (url.startsWith('blob:')) {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    return;
+    // Validate that the blob URL is alive in the current browser memory
+    try {
+      const check = await fetch(url, { method: 'GET' });
+      if (!check.ok) throw new Error('Blob resource unavailable');
+      const blobData = await check.blob();
+      if (!blobData || blobData.size === 0) throw new Error('Empty blob');
+      const safeBlobUrl = URL.createObjectURL(blobData);
+      const a = document.createElement('a');
+      a.href = safeBlobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => {
+        try { URL.revokeObjectURL(safeBlobUrl); } catch (e) {}
+      }, 2000);
+      return;
+    } catch (blobErr) {
+      console.error('[Download Error] Blob URL is expired or unavailable in this browser session:', url, blobErr);
+      alert('Download unavailable: This file was not stored in cloud storage and only existed temporarily on the device where it was selected. Please ask the team member to re-upload it.');
+      return;
+    }
   }
 
   // 2. Check if URL points to Supabase Storage
@@ -448,24 +463,47 @@ class SupabaseStore {
             vid.script = sub.content_text || '';
           } else if (rName.includes('voiceover')) {
             let voUrl = sub.file_path || '#';
-            if (voUrl && !voUrl.startsWith('http') && !voUrl.startsWith('blob:') && voUrl !== '#') {
+            if (voUrl.startsWith('blob:')) {
+              // Remote blob: URLs are invalid client references from past browser sessions
+              voUrl = '#';
+            }
+            if (voUrl && !voUrl.startsWith('http') && voUrl !== '#') {
               const { data: urlData } = supabase.storage.from('voiceovers').getPublicUrl(voUrl);
               if (urlData?.publicUrl) voUrl = urlData.publicUrl;
             }
-            vid.voiceover = {
-              name: sub.file_name || 'voiceover.mp3',
-              url: voUrl
-            };
+            if (sub.file_name && voUrl && voUrl !== '#') {
+              vid.voiceover = {
+                name: sub.file_name,
+                url: voUrl
+              };
+            } else if (sub.file_name) {
+              vid.voiceover = {
+                name: sub.file_name,
+                url: '#',
+                needsReupload: true
+              };
+            }
           } else if (rName.includes('thumbnail')) {
             let thumbUrl = sub.file_path || '#';
-            if (thumbUrl && !thumbUrl.startsWith('http') && !thumbUrl.startsWith('blob:') && thumbUrl !== '#') {
+            if (thumbUrl.startsWith('blob:')) {
+              thumbUrl = '#';
+            }
+            if (thumbUrl && !thumbUrl.startsWith('http') && thumbUrl !== '#') {
               const { data: urlData } = supabase.storage.from('thumbnails').getPublicUrl(thumbUrl);
               if (urlData?.publicUrl) thumbUrl = urlData.publicUrl;
             }
-            vid.thumbnail = {
-              name: sub.file_name || 'thumbnail.png',
-              url: thumbUrl
-            };
+            if (sub.file_name && thumbUrl && thumbUrl !== '#') {
+              vid.thumbnail = {
+                name: sub.file_name,
+                url: thumbUrl
+              };
+            } else if (sub.file_name) {
+              vid.thumbnail = {
+                name: sub.file_name,
+                url: '#',
+                needsReupload: true
+              };
+            }
           } else if (rName.includes('meta')) {
             vid.metaInfo = sub.content_text || '';
           } else {
@@ -1166,6 +1204,9 @@ class SupabaseStore {
     if (file) {
       const bucket = normTask.includes('voice') ? 'voiceovers' : 'thumbnails';
       const uploadRes = await uploadStorageFile(bucket, `vid_${videoNumber}`, file);
+      if (uploadRes.error) {
+        return { success: false, error: `Upload to storage failed: ${uploadRes.error}` };
+      }
       filePath = uploadRes.publicUrl || uploadRes.filePath;
       fileName = uploadRes.fileName || file.name;
     }

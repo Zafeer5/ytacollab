@@ -92,20 +92,25 @@ export function renderAdminProductionTableView(container, navigate) {
             : '<span class="helper-text">—</span>';
 
         // Voiceover (inline audio preview player + secure download)
+        const voHasValidUrl = Boolean(video.voiceover?.url && video.voiceover.url.startsWith('http'));
         const voContent = voStat.status === 'pending'
           ? '<span class="badge-pending">pending</span>'
           : video.voiceover
             ? `
               <div style="display: flex; flex-direction: column; gap: 4px;">
                 <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px;">
-                  <button type="button" class="btn-download btn-download-secure" data-url="${escapeHtml(video.voiceover.url)}" data-filename="${escapeHtml(video.voiceover.name)}" title="Download voiceover" style="border: none; background: transparent; cursor: pointer; text-align: left; padding: 0;">
-                    ${escapeHtml(video.voiceover.name)}
-                  </button>
-                  <button type="button" class="btn-toggle-audio-player" data-target="audio-${video.id}" title="Play in browser" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border); border-radius: 3px; cursor: pointer; padding: 2px 6px; font-size: 11px; color: var(--text-primary); flex-shrink: 0;">
-                    ▶️
-                  </button>
+                  ${voHasValidUrl ? `
+                    <button type="button" class="btn-download btn-download-secure" data-url="${escapeHtml(video.voiceover.url)}" data-filename="${escapeHtml(video.voiceover.name)}" title="Download voiceover" style="border: none; background: transparent; cursor: pointer; text-align: left; padding: 0;">
+                      ${escapeHtml(video.voiceover.name)}
+                    </button>
+                    <button type="button" class="btn-toggle-audio-player" data-target="audio-${video.id}" title="Play in browser" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border); border-radius: 3px; cursor: pointer; padding: 2px 6px; font-size: 11px; color: var(--text-primary); flex-shrink: 0;">
+                      ▶️
+                    </button>
+                  ` : `
+                    <span style="color: var(--text-muted); font-size: 12px;" title="File was not uploaded to cloud storage">${escapeHtml(video.voiceover.name)} <span style="font-size: 10px; color: #f59e0b;">(re-upload needed)</span></span>
+                  `}
                 </div>
-                <audio id="audio-${video.id}" controls src="${video.voiceover.url}" preload="none" style="display: none; width: 100%; height: 28px; margin-top: 2px;"></audio>
+                ${voHasValidUrl ? `<audio id="audio-${video.id}" controls src="${video.voiceover.url}" preload="none" style="display: none; width: 100%; height: 28px; margin-top: 2px;"></audio>` : ''}
               </div>
             `
             : '<span class="helper-text">—</span>';

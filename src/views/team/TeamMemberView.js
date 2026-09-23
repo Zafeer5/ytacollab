@@ -427,6 +427,7 @@ export function renderTeamMemberView(container, navigate) {
               </div>
             `;
           } else if (hasExistingVo) {
+            const voUrlValid = Boolean(currentVideo?.voiceover?.url && currentVideo.voiceover.url.startsWith('http'));
             voPreviewHtml = `
               <div class="audio-player-container">
                 <div class="audio-meta">
@@ -434,14 +435,18 @@ export function renderTeamMemberView(container, navigate) {
                     <span style="font-size: 20px;">🎵</span>
                     <div style="min-width: 0;">
                       <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(existingVoName)}</div>
-                      <div style="font-size: 11px; color: #10b981; font-weight: 600; margin-top: 1px;">✓ Available in database • Listen or download below</div>
+                      <div style="font-size: 11px; color: ${voUrlValid ? '#10b981' : '#f59e0b'}; font-weight: 600; margin-top: 1px;">
+                        ${voUrlValid ? '✓ Available in database • Listen or download below' : '⚠️ Cloud file missing • Please attach and submit audio file below'}
+                      </div>
                     </div>
                   </div>
-                  <button type="button" class="btn btn-secondary btn-sm btn-download-vo" data-url="${escapeHtml(currentVideo.voiceover.url)}" data-filename="${escapeHtml(existingVoName)}" title="Download audio">
-                    ⬇️ Download
-                  </button>
+                  ${voUrlValid ? `
+                    <button type="button" class="btn btn-secondary btn-sm btn-download-vo" data-url="${escapeHtml(currentVideo.voiceover.url)}" data-filename="${escapeHtml(existingVoName)}" title="Download audio">
+                      ⬇️ Download
+                    </button>
+                  ` : ''}
                 </div>
-                <audio controls src="${currentVideo.voiceover.url}" preload="metadata"></audio>
+                ${voUrlValid ? `<audio controls src="${currentVideo.voiceover.url}" preload="metadata"></audio>` : ''}
               </div>
             `;
           }

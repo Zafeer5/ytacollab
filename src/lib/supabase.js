@@ -18,6 +18,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 // Auxiliary client: used exclusively for user registration without overriding the admin's current session
 export const supabaseAuthHelper = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
+    storageKey: 'sb-aux-auth-token',
     persistSession: false,
     autoRefreshToken: false,
     detectSessionInUrl: false
@@ -32,15 +33,16 @@ export async function uploadStorageFile(bucket, path, file) {
 
   try {
     const { data, error } = await supabase.storage.from(bucket).upload(fullPath, file, {
-      upsert: true
+      upsert: true,
+      contentType: file.type || undefined
     });
 
     if (error) {
-      console.warn(`Storage upload error to ${bucket}:`, error);
-      // If bucket is not accessible or created yet, return client object URL as fallback preview
+      console.error(`Storage upload error to ${bucket}:`, error);
       return {
-        filePath: fullPath,
-        publicUrl: typeof URL !== 'undefined' && file instanceof Blob ? URL.createObjectURL(file) : '',
+        error: error.message || 'Storage upload failed',
+        filePath: null,
+        publicUrl: null,
         fileName: file.name
       };
     }
@@ -53,10 +55,11 @@ export async function uploadStorageFile(bucket, path, file) {
       fileName: file.name
     };
   } catch (err) {
-    console.warn('Storage helper exception:', err);
+    console.error('Storage helper exception:', err);
     return {
-      filePath: fullPath,
-      publicUrl: typeof URL !== 'undefined' && file instanceof Blob ? URL.createObjectURL(file) : '',
+      error: err.message || 'Storage exception occurred',
+      filePath: null,
+      publicUrl: null,
       fileName: file.name
     };
   }
