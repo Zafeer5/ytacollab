@@ -1,4 +1,14 @@
-import { store } from '../../lib/store.js';
+import { store, downloadFileSecurely } from '../../lib/store.js';
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 // Session-level persistent state for team member view across renders & store updates
 const teamSession = {
@@ -6,7 +16,8 @@ const teamSession = {
   submissionStatus: {},
   taskFeedback: {},
   inProgressDrafts: {},
-  thumbPreviewUrl: null
+  thumbPreviewUrl: null,
+  voPreviewUrl: null
 };
 
 function clearTeamSession() {
@@ -15,6 +26,12 @@ function clearTeamSession() {
       URL.revokeObjectURL(teamSession.thumbPreviewUrl);
     } catch (e) {}
     teamSession.thumbPreviewUrl = null;
+  }
+  if (teamSession.voPreviewUrl) {
+    try {
+      URL.revokeObjectURL(teamSession.voPreviewUrl);
+    } catch (e) {}
+    teamSession.voPreviewUrl = null;
   }
   Object.keys(teamSession.localFiles).forEach((k) => delete teamSession.localFiles[k]);
   Object.keys(teamSession.submissionStatus).forEach((k) => delete teamSession.submissionStatus[k]);
@@ -65,7 +82,6 @@ export function renderTeamMemberView(container, navigate) {
       <div class="prompts-container" style="max-height: 220px; overflow-y: auto;">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
           <span class="section-label" style="margin-bottom: 0;">Prompts for ${channelLabel}:</span>
-          <span class="helper-text" style="font-size: 11px;">Scroll or click Expand</span>
         </div>
         ${itemsHtml}
       </div>
@@ -102,23 +118,26 @@ export function renderTeamMemberView(container, navigate) {
 
     // Contextual title display
     const autoFetchedTitle = !selectedChannelId
-      ? ' (Please select a YouTube Channel)'
+      ? '— Select a Channel'
       : !selectedVideoNum
-      ? ' (Please select a Video #)'
+      ? '— Select a Video #'
       : currentVideo
-      ? (currentVideo.title || ' (No Title Found)')
-      : ' (Video Not Found)';
+      ? (currentVideo.title || '— (No Title Found)')
+      : '— (Video Not Found)';
 
-    // Channel dropdown options (defaults to clean unselected prompt)
+    // Channel dropdown options
     const channelOptions = [
-      `<option value="" ${!selectedChannelId ? 'selected' : ''}> Select Channel </option>`,
-      ...channels.map((c) => `<option value="${c.id}" ${c.id === selectedChannelId ? 'selected' : ''}>${c.name}</option>`)
+      `<option value="" ${!selectedChannelId ? 'selected' : ''}>-- Select Channel --</option>`,
+      ...channels.map((c) => `<option value="${c.id}" ${c.id === selectedChannelId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`)
     ].join('');
 
-    // Video # dropdown options (defaults to clean unselected prompt)
+    // Video # dropdown options (displays "(marked as done)" when checked by admin)
     const videoNumOptions = [
-      `<option value="" ${!selectedVideoNum ? 'selected' : ''}> Select Video # </option>`,
-      ...channelVideos.map((v) => `<option value="${v.videoNumber}" ${String(v.videoNumber) === String(selectedVideoNum) ? 'selected' : ''}>Video ${v.videoNumber}</option>`)
+      `<option value="" ${!selectedVideoNum ? 'selected' : ''}>-- Select Video # --</option>`,
+      ...channelVideos.map((v) => {
+        const doneLabel = v.status ? ' (marked as done)' : '';
+        return `<option value="${v.videoNumber}" ${String(v.videoNumber) === String(selectedVideoNum) ? 'selected' : ''}>Video ${v.videoNumber}${doneLabel}</option>`;
+      })
     ].join('');
 
     // User notifications
@@ -207,15 +226,15 @@ export function renderTeamMemberView(container, navigate) {
       }
 
       taskSectionsHtml = `
-        <div class="card" style="padding: 30px 20px; text-align: center; border: 1px dashed var(--border); border-radius: var(--radius); margin-top: 16px;">
+        <div class="card" style="padding: 28px 20px; text-align: center; border: 1px dashed var(--border); border-radius: var(--radius); margin-top: 16px;">
           <div style="font-size: 32px; margin-bottom: 10px;">🎬</div>
-          <h3 style="margin-bottom: 6px; font-size: 16px; color: var(--text-primary);">
-            ${!selectedChannelId ? 'No Channel Selected' : 'Select a Video # to Submit Tasks'}
+          <h3 style="margin-bottom: 6px; font-size: 15px; color: var(--text-primary);">
+            ${!selectedChannelId ? 'Select Channel' : 'Select Video #'}
           </h3>
-          <p class="helper-text" style="max-width: 480px; margin: 0 auto;">
+          <p class="helper-text" style="max-width: 440px; margin: 0 auto;">
             ${!selectedChannelId
-              ? 'Please select your YouTube Channel above to view its specific prompts and video list.'
-              : `Channel <strong>${channelName}</strong> is selected. Please select a Video # from the dropdown above to submit content.`}
+              ? 'Choose a channel above to load videos and prompt templates.'
+              : `Select a video from ${escapeHtml(channelName)} to submit content.`}
           </p>
           ${channelPromptsPreview}
         </div>
@@ -390,26 +409,39 @@ export function renderTeamMemberView(container, navigate) {
             ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${teamSession.taskFeedback['voiceover']}</div>`
             : '';
 
-          // Audio file preview info
+          // Audio file in-browser player & download
           let voPreviewHtml = '';
-          if (selectedVoFile) {
+          if (selectedVoFile && teamSession.voPreviewUrl) {
             voPreviewHtml = `
-              <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius); max-width: 440px;">
-                <span style="font-size: 20px;">🎵</span>
-                <div style="flex: 1; min-width: 0;">
-                  <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${selectedVoFile.name}</div>
-                  <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Attached audio (${Math.round(selectedVoFile.size / 1024)} KB)</div>
+              <div class="audio-player-container">
+                <div class="audio-meta">
+                  <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                    <span style="font-size: 20px;">🎵</span>
+                    <div style="min-width: 0;">
+                      <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(selectedVoFile.name)}</div>
+                      <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">Ready to submit (${Math.round(selectedVoFile.size / 1024)} KB) • Play below to review</div>
+                    </div>
+                  </div>
                 </div>
+                <audio controls src="${teamSession.voPreviewUrl}" preload="metadata"></audio>
               </div>
             `;
           } else if (hasExistingVo) {
             voPreviewHtml = `
-              <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 8px 12px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius); max-width: 440px;">
-                <span style="font-size: 20px;">🎵</span>
-                <div style="flex: 1; min-width: 0;">
-                  <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${existingVoName}</div>
-                  <div style="font-size: 11px; color: #10b981; margin-top: 2px;">✓ Voiceover in database</div>
+              <div class="audio-player-container">
+                <div class="audio-meta">
+                  <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+                    <span style="font-size: 20px;">🎵</span>
+                    <div style="min-width: 0;">
+                      <div style="font-size: 13px; font-weight: 700; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(existingVoName)}</div>
+                      <div style="font-size: 11px; color: #10b981; font-weight: 600; margin-top: 1px;">✓ Available in database • Listen or download below</div>
+                    </div>
+                  </div>
+                  <button type="button" class="btn btn-secondary btn-sm btn-download-vo" data-url="${escapeHtml(currentVideo.voiceover.url)}" data-filename="${escapeHtml(existingVoName)}" title="Download audio">
+                    ⬇️ Download
+                  </button>
                 </div>
+                <audio controls src="${currentVideo.voiceover.url}" preload="metadata"></audio>
               </div>
             `;
           }
@@ -549,12 +581,12 @@ export function renderTeamMemberView(container, navigate) {
         <div class="card" style="display: flex; flex-direction: column; gap: 12px;">
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
             <div>
-              <span class="section-label">Team_member_name</span>
-              <div style="font-size: 16px; font-weight: 700;">${user.username}</div>
+              <span class="section-label">Team Member</span>
+              <div style="font-size: 16px; font-weight: 700;">${escapeHtml(user.username)}</div>
             </div>
           </div>
 
-          <!-- Channel & Video Selection (User selects manually) -->
+          <!-- Channel & Video Selection -->
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
             <div class="form-group" style="margin-bottom: 0;">
               <label for="member-channel-select">Select Channel</label>
@@ -564,20 +596,26 @@ export function renderTeamMemberView(container, navigate) {
             </div>
 
             <div class="form-group" style="margin-bottom: 0;">
-              <label for="member-video-select">Select Video #</label>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <label for="member-video-select" style="margin-bottom: 0;">Select Video #</label>
+                ${currentVideo?.status ? '<span class="badge-done">✓ (marked as done)</span>' : ''}
+              </div>
               <select id="member-video-select" ${!selectedChannelId ? 'disabled' : ''}>
                 ${videoNumOptions || '<option value="">No videos available</option>'}
               </select>
             </div>
           </div>
 
-          <!-- Auto-fetched Title from DB -->
+          <!-- Video Title -->
           <div>
             <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
-              <span class="section-label" style="margin-bottom: 0;">Title (auto-fetched from DB according to channel + video #)</span>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span class="section-label" style="margin-bottom: 0;">Video Title</span>
+                ${currentVideo?.status ? '<span class="badge-done">(marked as done)</span>' : ''}
+              </div>
             </div>
             <div style="position: relative; font-size: 15px; font-weight: 600; padding: 10px 14px; padding-right: ${currentVideo && currentVideo.title ? '88px' : '14px'}; background-color: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-primary); min-height: 46px; display: flex; align-items: center; word-break: break-word;">
-              <span>${autoFetchedTitle}</span>
+              <span>${escapeHtml(autoFetchedTitle)}</span>
               ${currentVideo && currentVideo.title ? `
                 <button type="button" id="btn-copy-fetched-title" class="btn btn-secondary btn-sm" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); padding: 3px 10px; font-size: 11px; height: 26px; flex-shrink: 0;" title="Copy title to clipboard">
                   Copy
@@ -887,13 +925,22 @@ export function renderTeamMemberView(container, navigate) {
     if (removeVoBtn) {
       removeVoBtn.addEventListener('click', () => {
         delete teamSession.localFiles['voiceover'];
+        if (teamSession.voPreviewUrl) {
+          try { URL.revokeObjectURL(teamSession.voPreviewUrl); } catch (e) {}
+          teamSession.voPreviewUrl = null;
+        }
         render();
       });
     }
     if (voInput) {
       voInput.addEventListener('change', (e) => {
         if (e.target.files && e.target.files[0]) {
-          teamSession.localFiles['voiceover'] = e.target.files[0];
+          const f = e.target.files[0];
+          teamSession.localFiles['voiceover'] = f;
+          if (teamSession.voPreviewUrl) {
+            try { URL.revokeObjectURL(teamSession.voPreviewUrl); } catch (err) {}
+          }
+          teamSession.voPreviewUrl = URL.createObjectURL(f);
           delete teamSession.taskFeedback['voiceover'];
           render();
         }
@@ -925,6 +972,10 @@ export function renderTeamMemberView(container, navigate) {
 
         if (res.success) {
           delete teamSession.localFiles['voiceover'];
+          if (teamSession.voPreviewUrl) {
+            try { URL.revokeObjectURL(teamSession.voPreviewUrl); } catch (err) {}
+            teamSession.voPreviewUrl = null;
+          }
           teamSession.submissionStatus['voiceover'] = 'Submitted';
           teamSession.taskFeedback['voiceover'] = `✓ Voiceover "${file.name}" successfully saved to database!`;
         } else {
@@ -933,6 +984,21 @@ export function renderTeamMemberView(container, navigate) {
         render();
       });
     }
+
+    // Voiceover In-Browser Download Handler
+    container.querySelectorAll('.btn-download-vo').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const url = btn.dataset.url;
+        const filename = btn.dataset.filename || 'voiceover.mp3';
+        const origText = btn.innerHTML;
+        btn.textContent = 'Downloading...';
+        btn.disabled = true;
+        await downloadFileSecurely(url, filename);
+        btn.innerHTML = origText;
+        btn.disabled = false;
+      });
+    });
 
     // Generic Handlers
     container.querySelectorAll('.btn-custom-upload').forEach((btn) => {

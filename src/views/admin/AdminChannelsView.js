@@ -46,7 +46,6 @@ export function renderAdminChannelsView(container, navigate) {
 
           <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
             <h3>Existing Channels (${channels.length})</h3>
-            <span class="helper-text" style="color: var(--success-text);">● Real-time updates enabled</span>
           </div>
 
           <div class="scrollable-container" style="max-height: 480px;">

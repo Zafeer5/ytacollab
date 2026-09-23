@@ -17,7 +17,8 @@ export function renderHeader(container, currentView, navigate) {
         </div>
       `;
     }
-  } else if (user.role === 'ADMIN') {
+  } else if (user.role === 'ADMIN' || user.role === 'OWNER' || user.isAdmin) {
+    const roleLabel = user.isOwner || user.role === 'OWNER' ? 'Owner' : 'Admin';
     leftContent = `
       <div style="display: flex; align-items: center; gap: 12px;">
         <button id="header-sidebar-toggle" class="sidebar-hamburger" title="Toggle Navigation">
@@ -31,7 +32,7 @@ export function renderHeader(container, currentView, navigate) {
 
     rightContent = `
       <div class="nav-links" style="align-items: center; gap: 10px;">
-        <span class="helper-text" style="color: var(--text-primary); font-weight: 600;">Admin</span>
+        <span class="helper-text" style="color: var(--text-primary); font-weight: 600;">${roleLabel}</span>
       </div>
     `;
   } else if (user.role === 'TEAM_MEMBER') {
@@ -134,12 +135,17 @@ export function renderHeader(container, currentView, navigate) {
       notifPopover.style.display = isOpen ? 'none' : 'block';
     });
 
+    if (window._headerDocClickListener) {
+      document.removeEventListener('click', window._headerDocClickListener);
+    }
     const closeOnDocClick = (e) => {
-      const wrapper = container.querySelector('#header-notif-wrapper');
-      if (wrapper && !wrapper.contains(e.target)) {
-        notifPopover.style.display = 'none';
+      const wrapper = document.querySelector('#header-notif-wrapper');
+      const popover = document.querySelector('#header-notif-popover');
+      if (popover && wrapper && !wrapper.contains(e.target)) {
+        popover.style.display = 'none';
       }
     };
+    window._headerDocClickListener = closeOnDocClick;
     document.addEventListener('click', closeOnDocClick);
   }
 

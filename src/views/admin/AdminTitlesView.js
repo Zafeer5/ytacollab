@@ -2,6 +2,7 @@ import { store } from '../../lib/store.js';
 
 export function renderAdminTitlesView(container, navigate) {
   let selectedChanId = localStorage.getItem('yta_selected_titles_channel') || '';
+  let draftTitlesText = sessionStorage.getItem('yta_titles_draft_text') || '';
   let feedbackMessage = '';
 
   function render() {
@@ -61,19 +62,19 @@ export function renderAdminTitlesView(container, navigate) {
 
             <div class="form-group">
               <label for="titles-textarea">Paste titles line-by-line</label>
-              <textarea id="titles-textarea" rows="6" placeholder="Paste titles line-by-line here...&#10;First Video Title&#10;Second Video Title&#10;Third Video Title" required></textarea>
+              <textarea id="titles-textarea" rows="6" placeholder="Paste titles line-by-line here...&#10;First Video Title&#10;Second Video Title&#10;Third Video Title" required>${draftTitlesText}</textarea>
             </div>
 
             <button type="submit" class="btn btn-primary">Save and Submit</button>
           </form>
 
           <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px;">
-            <h3>Titles List (maps Video 1, Video 2… to the pasted lines)</h3>
+            <h3>Existing Video Titles</h3>
             <span class="helper-text">Total: ${existingVideos.length} videos</span>
           </div>
 
           <div class="scrollable-container" style="max-height: 400px;">
-            ${titlesListHtml || '<div style="padding: 20px; text-align: center;" class="helper-text">No titles added for this channel yet. Paste titles above and click Save and Submit.</div>'}
+            ${titlesListHtml || '<div style="padding: 20px; text-align: center;" class="helper-text">No titles added for this channel yet.</div>'}
           </div>
         </div>
       `;
@@ -102,19 +103,28 @@ export function renderAdminTitlesView(container, navigate) {
       });
     }
 
+    const textarea = container.querySelector('#titles-textarea');
+    if (textarea) {
+      textarea.addEventListener('input', (e) => {
+        draftTitlesText = e.target.value;
+        sessionStorage.setItem('yta_titles_draft_text', draftTitlesText);
+      });
+    }
+
     const titlesForm = container.querySelector('#add-titles-form');
     if (titlesForm) {
       titlesForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const textarea = container.querySelector('#titles-textarea');
         const submitBtn = titlesForm.querySelector('button[type="submit"]');
         submitBtn.disabled = true;
         submitBtn.textContent = 'Saving...';
-        const rawText = textarea.value;
+        const rawText = textarea ? textarea.value : '';
         const res = await store.addTitlesToChannel(selectedChanId, rawText);
         if (res.success) {
           feedbackMessage = `Successfully added ${res.videos.length} video title(s) to "${currentChannel.name}".`;
-          textarea.value = '';
+          draftTitlesText = '';
+          sessionStorage.removeItem('yta_titles_draft_text');
+          if (textarea) textarea.value = '';
         } else {
           feedbackMessage = res.error;
         }

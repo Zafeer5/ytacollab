@@ -12,8 +12,12 @@
   --text-primary: #f4f4f5;
   --text-secondary: #a1a1aa;
   --text-muted: #71717a;
-  --accent: #ffffff;
+  --accent: #ff7a00;
   --accent-text: #09090b;
+  --cta-orange: #ff7a00;
+  --cta-orange-hover: #ff8c1a;
+  --cta-orange-active: #e66e00;
+  --cta-orange-text: #09090b;
   --pending-bg: #261616;
   --pending-text: #f87171;
   --pending-border: #7f1d1d;
@@ -31,6 +35,10 @@
   margin: 0;
   padding: 0;
   -webkit-tap-highlight-color: transparent;
+}
+
+html {
+  scrollbar-gutter: stable;
 }
 
 html, body {
@@ -414,6 +422,14 @@ textarea {
 
 select {
   cursor: pointer;
+  background-color: var(--surface);
+  color: var(--text-primary);
+}
+
+select option {
+  background-color: #18181b;
+  color: #f4f4f5;
+  padding: 8px 10px;
 }
 
 /* Checkboxes */
@@ -439,6 +455,7 @@ input[type="checkbox"] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   font-family: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -446,27 +463,44 @@ input[type="checkbox"] {
   border-radius: var(--radius);
   cursor: pointer;
   border: 1px solid transparent;
-  transition: opacity 0.15s ease, background-color 0.15s ease;
+  transition: transform 0.06s ease, background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
   white-space: nowrap;
+  user-select: none;
 }
 
-.btn:active {
-  opacity: 0.8;
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+  opacity: 0.92;
 }
 
 .btn:disabled {
-  opacity: 0.4;
+  opacity: 0.45;
   cursor: not-allowed;
+  filter: grayscale(0.2);
 }
 
-.btn-primary {
-  background-color: var(--accent);
-  color: var(--accent-text);
-  border-color: var(--accent);
+/* High-Contrast Orange CTA - Mistake-Free with Bold Dark Text */
+.btn-primary, .btn-cta {
+  background-color: var(--cta-orange);
+  color: var(--cta-orange-text) !important;
+  border-color: var(--cta-orange);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  box-shadow: 0 1px 4px rgba(255, 122, 0, 0.25);
 }
 
-.btn-primary:hover:not(:disabled) {
-  background-color: #e4e4e7;
+.btn-primary:hover:not(:disabled), .btn-cta:hover:not(:disabled) {
+  background-color: var(--cta-orange-hover);
+  border-color: var(--cta-orange-hover);
+  color: var(--cta-orange-text) !important;
+  box-shadow: 0 2px 8px rgba(255, 122, 0, 0.35);
+}
+
+.btn-primary:active:not(:disabled), .btn-cta:active:not(:disabled) {
+  background-color: var(--cta-orange-active);
+  border-color: var(--cta-orange-active);
+  color: var(--cta-orange-text) !important;
+  transform: scale(0.97);
 }
 
 .btn-secondary {
@@ -477,6 +511,7 @@ input[type="checkbox"] {
 
 .btn-secondary:hover:not(:disabled) {
   background-color: var(--surface-hover);
+  border-color: var(--border-focus);
 }
 
 .btn-danger {
@@ -490,12 +525,54 @@ input[type="checkbox"] {
 }
 
 .btn-sm {
-  padding: 4px 8px;
+  padding: 4px 10px;
   font-size: 12px;
 }
 
 .btn-full {
   width: 100%;
+}
+
+/* Custom Audio Player Container */
+.audio-player-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-width: 500px;
+}
+
+.audio-player-container .audio-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.audio-player-container audio {
+  width: 100%;
+  height: 38px;
+  border-radius: 4px;
+  outline: none;
+}
+
+.badge-done {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .nav-btn {

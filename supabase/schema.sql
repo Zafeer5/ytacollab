@@ -8,15 +8,21 @@ create extension if not exists "uuid-ossp";
 create extension if not exists "pgcrypto";
 
 -- ------------------------------------------------------------------------------
--- 1. PROFILES TABLE (Extends auth.users)
+-- 1. PROFILES TABLE (Extends auth.users; supports Owner, Admin, and Member roles)
 -- ------------------------------------------------------------------------------
 create table if not exists public.profiles (
     id uuid primary key references auth.users(id) on delete cascade,
     username text unique not null,
     is_admin boolean default false not null,
+    is_owner boolean default false not null,
+    password_text text,
     created_at timestamptz default now() not null,
     updated_at timestamptz default now() not null
 );
+
+-- Migration helpers for existing deployments:
+alter table public.profiles add column if not exists is_owner boolean default false not null;
+alter table public.profiles add column if not exists password_text text;
 
 -- ------------------------------------------------------------------------------
 -- 2. CHANNELS TABLE
@@ -144,20 +150,27 @@ returns trigger as $$
 declare
     _username text;
     _is_admin boolean;
+    _is_owner boolean;
+    _password_text text;
 begin
     _username := coalesce(new.raw_user_meta_data->>'username', split_part(new.email, '@', 1));
     _is_admin := coalesce((new.raw_user_meta_data->>'is_admin')::boolean, false);
+    _is_owner := coalesce((new.raw_user_meta_data->>'is_owner')::boolean, false);
+    _password_text := new.raw_user_meta_data->>'password_text';
     
-    -- If username is 'admin' or email starts with admin@, grant admin status
-    if lower(_username) = 'admin' or lower(new.email) like 'admin@%' then
+    -- If username is 'admin' or 'owner' or starts with admin@ / owner@, grant owner & admin status
+    if lower(_username) in ('admin', 'owner') or lower(new.email) like 'admin@%' or lower(new.email) like 'owner@%' then
         _is_admin := true;
+        _is_owner := true;
     end if;
 
-    insert into public.profiles (id, username, is_admin, created_at, updated_at)
-    values (new.id, _username, _is_admin, now(), now())
+    insert into public.profiles (id, username, is_admin, is_owner, password_text, created_at, updated_at)
+    values (new.id, _username, _is_admin, _is_owner, _password_text, now(), now())
     on conflict (id) do update set
         username = excluded.username,
         is_admin = excluded.is_admin,
+        is_owner = excluded.is_owner,
+        password_text = coalesce(excluded.password_text, public.profiles.password_text),
         updated_at = now();
 
     return new;
@@ -168,6 +181,43 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
     after insert on auth.users
     for each row execute function public.handle_new_user();
+
+-- ------------------------------------------------------------------------------
+-- CREDENTIALS MANAGEMENT RPC FUNCTION (For Owner & Admin)
+-- ------------------------------------------------------------------------------
+create or replace function public.admin_update_user_credentials(
+    target_user_id uuid,
+    new_username text,
+    new_password text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+begin
+    -- Update auth.users credentials if password provided
+    if new_password is not null and new_password <> '' then
+        update auth.users
+        set encrypted_password = crypt(new_password, gen_salt('bf')),
+            email = lower(new_username) || '@colab.yta',
+            raw_user_meta_data = jsonb_set(coalesce(raw_user_meta_data, '{}'::jsonb), '{username}', to_jsonb(new_username))
+        where id = target_user_id;
+    else
+        update auth.users
+        set email = lower(new_username) || '@colab.yta',
+            raw_user_meta_data = jsonb_set(coalesce(raw_user_meta_data, '{}'::jsonb), '{username}', to_jsonb(new_username))
+        where id = target_user_id;
+    end if;
+
+    -- Update public.profiles record
+    update public.profiles
+    set username = new_username,
+        password_text = coalesce(nullif(new_password, ''), password_text),
+        updated_at = now()
+    where id = target_user_id;
+end;
+$$;
 
 -- ------------------------------------------------------------------------------
 -- STORAGE BUCKETS (Thumbnails & Voiceovers)
@@ -405,15 +455,16 @@ select id, 'SEO Description & Tags Prompt', 'Generate a 3-paragraph SEO-optimize
 from public.roles where name = 'Meta Info'
 on conflict do nothing;
 
--- Link admin profile if an existing auth user exists
+-- Link admin profile and designate primary owner if an existing auth user exists
 do $$
 declare
     first_user_id uuid;
 begin
     select id into first_user_id from auth.users order by created_at asc limit 1;
     if first_user_id is not null then
-        insert into public.profiles (id, username, is_admin)
-        values (first_user_id, 'admin', true)
-        on conflict (id) do update set is_admin = true;
+        insert into public.profiles (id, username, is_admin, is_owner)
+        values (first_user_id, 'admin', true, true)
+        on conflict (id) do update set is_admin = true, is_owner = true;
     end if;
 end $$;
+

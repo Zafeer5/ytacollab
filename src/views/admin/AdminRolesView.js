@@ -1,16 +1,48 @@
 import { store } from '../../lib/store.js';
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 export function renderAdminRolesView(container, navigate) {
   let editingRoleId = null;
   let feedbackMessage = '';
-  let selectedChannelFilter = 'all';
-  let selectedRoleFilter = 'all';
+
+  // Persistent filter state across renders and tab switches
+  let selectedChannelFilter = localStorage.getItem('yta_admin_prompt_filter_channel') || 'all';
+  let selectedRoleFilter = localStorage.getItem('yta_admin_prompt_filter_role') || 'all';
+
+  // Persistent prompt form selection state
+  let selectedPromptChannel = localStorage.getItem('yta_admin_prompt_channel_id') || localStorage.getItem('yta_selected_channel_id') || '';
+  let selectedPromptRole = localStorage.getItem('yta_admin_prompt_role_name') || '';
+
+  // In-progress drafts saved in sessionStorage
+  let draftLabel = sessionStorage.getItem('yta_admin_prompt_draft_label') || '';
+  let draftText = sessionStorage.getItem('yta_admin_prompt_draft_text') || '';
 
   function render() {
     const state = store.getState();
     const roles = state.roles || [];
     const channels = state.channels || [];
     const prompts = state.prompts || [];
+
+    // Ensure selected channel is valid
+    if (selectedPromptChannel && selectedPromptChannel !== '__all__' && !channels.some((c) => c.id === selectedPromptChannel)) {
+      selectedPromptChannel = channels.length > 0 ? channels[0].id : '';
+      localStorage.setItem('yta_admin_prompt_channel_id', selectedPromptChannel);
+    }
+
+    // Ensure selected role is valid
+    if (roles.length > 0 && (!selectedPromptRole || !roles.some((r) => r.name.toLowerCase() === selectedPromptRole.toLowerCase()))) {
+      selectedPromptRole = roles[0].name;
+      localStorage.setItem('yta_admin_prompt_role_name', selectedPromptRole);
+    }
 
     // Roles list HTML
     const rolesListHtml = roles
@@ -23,7 +55,7 @@ export function renderAdminRolesView(container, navigate) {
             ${
               isEditing
                 ? `
-                  <input type="text" id="edit-role-name-${role.id}" value="${role.name}" style="flex: 1; min-width: 140px; padding: 6px 10px;" />
+                  <input type="text" id="edit-role-name-${role.id}" value="${escapeHtml(role.name)}" style="flex: 1; min-width: 140px; padding: 6px 10px;" />
                   <select id="edit-role-type-${role.id}" style="width: auto; padding: 6px 10px;">
                     <option value="Text" ${role.inputType === 'Text' ? 'selected' : ''}>Text</option>
                     <option value="Number" ${role.inputType === 'Number' ? 'selected' : ''}>Number</option>
@@ -34,7 +66,7 @@ export function renderAdminRolesView(container, navigate) {
                 `
                 : `
                   <div>
-                    <span style="font-weight: 600; font-size: 14px;">${role.name}</span>
+                    <span style="font-weight: 600; font-size: 14px;">${escapeHtml(role.name)}</span>
                     <span class="helper-text" style="margin-left: 8px;">[Type: ${role.inputType}]</span>
                     <span class="sidebar-tag" style="margin-left: 8px;">${rolePromptsCount} prompt(s)</span>
                   </div>
@@ -71,16 +103,16 @@ export function renderAdminRolesView(container, navigate) {
           <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
             <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
               <span class="sidebar-tag" style="background: rgba(99, 102, 241, 0.12); color: #818cf8; border-color: rgba(99, 102, 241, 0.3); font-weight: 500;">
-                📺 ${p.channelName || 'All Channels'}
+                📺 ${escapeHtml(p.channelName || 'All Channels')}
               </span>
               <span class="sidebar-tag" style="color: var(--text-primary); border-color: var(--text-primary);">
-                ${p.roleName}
+                ${escapeHtml(p.roleName)}
               </span>
-              <strong style="color: var(--text-primary); font-size: 13px;">${p.label}</strong>
+              <strong style="color: var(--text-primary); font-size: 13px;">${escapeHtml(p.label)}</strong>
             </div>
             <button class="btn btn-danger btn-sm delete-prompt-btn" data-id="${p.id}">Delete</button>
           </div>
-          <div class="prompt-scrollable-content" style="max-height: 85px;">${p.promptText}</div>
+          <div class="prompt-scrollable-content" style="max-height: 85px;">${escapeHtml(p.promptText)}</div>
         </div>
       `)
       .join('');
@@ -88,15 +120,15 @@ export function renderAdminRolesView(container, navigate) {
     // Channel options for prompt form
     const channelOptions = channels.length > 0
       ? [
-          `<option value="">-- Select Target Channel --</option>`,
-          ...channels.map((c) => `<option value="${c.id}">${c.name}</option>`),
-          `<option value="__all__">🌐 All Channels (Global Prompt)</option>`
+          `<option value="" ${!selectedPromptChannel ? 'selected' : ''}>-- Select Target Channel --</option>`,
+          ...channels.map((c) => `<option value="${c.id}" ${c.id === selectedPromptChannel ? 'selected' : ''}>${escapeHtml(c.name)}</option>`),
+          `<option value="__all__" ${selectedPromptChannel === '__all__' ? 'selected' : ''}>🌐 All Channels (Global Prompt)</option>`
         ].join('')
       : `<option value="__all__">🌐 All Channels (No specific channels created yet)</option>`;
 
     // Role options for prompt form
     const roleOptions = roles
-      .map((r) => `<option value="${r.name}">${r.name}</option>`)
+      .map((r) => `<option value="${r.name}" ${r.name.toLowerCase() === (selectedPromptRole || '').toLowerCase() ? 'selected' : ''}>${escapeHtml(r.name)}</option>`)
       .join('');
 
     // Filter dropdown options
@@ -104,19 +136,19 @@ export function renderAdminRolesView(container, navigate) {
       `<option value="all" ${selectedChannelFilter === 'all' ? 'selected' : ''}>All Channels (${prompts.length})</option>`,
       ...channels.map((c) => {
         const count = prompts.filter((p) => p.channelId === c.id).length;
-        return `<option value="${c.id}" ${selectedChannelFilter === c.id ? 'selected' : ''}>${c.name} (${count})</option>`;
+        return `<option value="${c.id}" ${selectedChannelFilter === c.id ? 'selected' : ''}>${escapeHtml(c.name)} (${count})</option>`;
       }),
       `<option value="__all__" ${selectedChannelFilter === '__all__' ? 'selected' : ''}>Global / Unassigned (${prompts.filter((p) => !p.channelId).length})</option>`
     ].join('');
 
     const roleFilterOptions = [
       `<option value="all" ${selectedRoleFilter === 'all' ? 'selected' : ''}>All Roles</option>`,
-      ...roles.map((r) => `<option value="${r.name}" ${selectedRoleFilter.toLowerCase() === r.name.toLowerCase() ? 'selected' : ''}>${r.name}</option>`)
+      ...roles.map((r) => `<option value="${r.name}" ${selectedRoleFilter.toLowerCase() === r.name.toLowerCase() ? 'selected' : ''}>${escapeHtml(r.name)}</option>`)
     ].join('');
 
     container.innerHTML = `
       <div class="main-content">
-        ${feedbackMessage ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary);">${feedbackMessage}</div>` : ''}
+        ${feedbackMessage ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 16px;">${feedbackMessage}</div>` : ''}
 
         <!-- Section 1: Define Roles & Tasks -->
         <div class="card">
@@ -143,7 +175,7 @@ export function renderAdminRolesView(container, navigate) {
 
           <h3>Roles &amp; Tasks List (${roles.length})</h3>
           <div class="scrollable-container" style="max-height: 300px;">
-            ${rolesListHtml}
+            ${rolesListHtml || '<div style="padding: 16px; text-align: center;" class="helper-text">No roles defined yet.</div>'}
           </div>
         </div>
 
@@ -172,16 +204,18 @@ export function renderAdminRolesView(container, navigate) {
 
               <div class="form-group" style="margin-bottom: 0;">
                 <label for="prompt-label-input">Prompt Title / Label</label>
-                <input type="text" id="prompt-label-input" placeholder="e.g. Channel Style Hook, Midjourney Style" required />
+                <input type="text" id="prompt-label-input" value="${escapeHtml(draftLabel)}" placeholder="e.g. Channel Style Hook, Midjourney Style" required />
               </div>
             </div>
 
             <div class="form-group">
-              <label for="prompt-text-input">Prompt Content (Team member will copy this for this channel)</label>
-              <textarea id="prompt-text-input" rows="3" placeholder="Enter prompt guidelines or AI prompt template for this channel..." required></textarea>
+              <label for="prompt-text-input">Prompt Content</label>
+              <textarea id="prompt-text-input" rows="3" placeholder="Enter prompt guidelines or AI prompt template for this channel..." required>${escapeHtml(draftText)}</textarea>
             </div>
 
-            <button type="submit" class="btn btn-primary">Add Role Prompt</button>
+            <div style="display: flex; justify-content: flex-start; align-items: center; gap: 12px; flex-wrap: wrap;">
+              <button type="submit" class="btn btn-primary" id="btn-add-prompt-submit">Add Role Prompt</button>
+            </div>
           </form>
 
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 10px;">
@@ -265,11 +299,51 @@ export function renderAdminRolesView(container, navigate) {
       });
     });
 
+    // Prompt Form Elements & Persistence Listeners
+    const promptChanSelect = container.querySelector('#prompt-channel-select');
+    if (promptChanSelect) {
+      promptChanSelect.addEventListener('change', (e) => {
+        selectedPromptChannel = e.target.value;
+        localStorage.setItem('yta_admin_prompt_channel_id', selectedPromptChannel);
+        // Also sync active prompts filter so admin sees prompts for the chosen channel
+        if (selectedPromptChannel) {
+          selectedChannelFilter = selectedPromptChannel;
+          localStorage.setItem('yta_admin_prompt_filter_channel', selectedChannelFilter);
+          render();
+        }
+      });
+    }
+
+    const promptRoleSelect = container.querySelector('#prompt-role-select');
+    if (promptRoleSelect) {
+      promptRoleSelect.addEventListener('change', (e) => {
+        selectedPromptRole = e.target.value;
+        localStorage.setItem('yta_admin_prompt_role_name', selectedPromptRole);
+      });
+    }
+
+    const promptLabelInput = container.querySelector('#prompt-label-input');
+    if (promptLabelInput) {
+      promptLabelInput.addEventListener('input', (e) => {
+        draftLabel = e.target.value;
+        sessionStorage.setItem('yta_admin_prompt_draft_label', draftLabel);
+      });
+    }
+
+    const promptTextInput = container.querySelector('#prompt-text-input');
+    if (promptTextInput) {
+      promptTextInput.addEventListener('input', (e) => {
+        draftText = e.target.value;
+        sessionStorage.setItem('yta_admin_prompt_draft_text', draftText);
+      });
+    }
+
     // Prompt Filters
     const channelFilterEl = container.querySelector('#filter-prompt-channel');
     if (channelFilterEl) {
       channelFilterEl.addEventListener('change', (e) => {
         selectedChannelFilter = e.target.value;
+        localStorage.setItem('yta_admin_prompt_filter_channel', selectedChannelFilter);
         render();
       });
     }
@@ -278,6 +352,7 @@ export function renderAdminRolesView(container, navigate) {
     if (roleFilterEl) {
       roleFilterEl.addEventListener('change', (e) => {
         selectedRoleFilter = e.target.value;
+        localStorage.setItem('yta_admin_prompt_filter_role', selectedRoleFilter);
         render();
       });
     }
@@ -300,16 +375,31 @@ export function renderAdminRolesView(container, navigate) {
 
         const submitBtn = addPromptForm.querySelector('button[type="submit"]');
         submitBtn.disabled = true;
+        submitBtn.textContent = 'Adding...';
 
         const res = await store.addRolePrompt(cSelect.value, rSelect.value, lInput.value, tInput.value);
         if (res) {
-          feedbackMessage = `Added prompt "${res.label}" for ${res.roleName} (${res.channelName}).`;
-          lInput.value = '';
-          tInput.value = '';
+          feedbackMessage = `Added prompt "${res.label}" for ${res.roleName} (${res.channelName}). Selected channel and role remain active for you to add another prompt.`;
+          // Clear only draft title & prompt content
+          draftLabel = '';
+          draftText = '';
+          sessionStorage.removeItem('yta_admin_prompt_draft_label');
+          sessionStorage.removeItem('yta_admin_prompt_draft_text');
+
+          // Keep selected channel & role intact
+          selectedPromptChannel = cSelect.value;
+          selectedPromptRole = rSelect.value;
+          localStorage.setItem('yta_admin_prompt_channel_id', selectedPromptChannel);
+          localStorage.setItem('yta_admin_prompt_role_name', selectedPromptRole);
+
+          // Update active prompt list filter so the newly added prompt is visible
+          selectedChannelFilter = selectedPromptChannel;
+          localStorage.setItem('yta_admin_prompt_filter_channel', selectedChannelFilter);
         } else {
           feedbackMessage = 'Failed to add prompt. Please try again.';
         }
         submitBtn.disabled = false;
+        submitBtn.textContent = 'Add Role Prompt';
         render();
       });
     }

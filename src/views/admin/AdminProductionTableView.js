@@ -1,4 +1,14 @@
-import { store } from '../../lib/store.js';
+import { store, downloadFileSecurely } from '../../lib/store.js';
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 export function renderAdminProductionTableView(container, navigate) {
   let selectedChannelId = localStorage.getItem('yta_selected_channel_id') || '';
@@ -81,25 +91,33 @@ export function renderAdminProductionTableView(container, navigate) {
             `
             : '<span class="helper-text">—</span>';
 
-        // Voiceover
+        // Voiceover (inline audio preview player + secure download)
         const voContent = voStat.status === 'pending'
           ? '<span class="badge-pending">pending</span>'
           : video.voiceover
             ? `
-              <a href="${video.voiceover.url}" download="${video.voiceover.name}" class="btn-download" title="Download voiceover">
-                ${video.voiceover.name}
-              </a>
+              <div style="display: flex; flex-direction: column; gap: 4px;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px;">
+                  <button type="button" class="btn-download btn-download-secure" data-url="${escapeHtml(video.voiceover.url)}" data-filename="${escapeHtml(video.voiceover.name)}" title="Download voiceover" style="border: none; background: transparent; cursor: pointer; text-align: left; padding: 0;">
+                    ${escapeHtml(video.voiceover.name)}
+                  </button>
+                  <button type="button" class="btn-toggle-audio-player" data-target="audio-${video.id}" title="Play in browser" style="background: rgba(255,255,255,0.06); border: 1px solid var(--border); border-radius: 3px; cursor: pointer; padding: 2px 6px; font-size: 11px; color: var(--text-primary); flex-shrink: 0;">
+                    ▶️
+                  </button>
+                </div>
+                <audio id="audio-${video.id}" controls src="${video.voiceover.url}" preload="none" style="display: none; width: 100%; height: 28px; margin-top: 2px;"></audio>
+              </div>
             `
             : '<span class="helper-text">—</span>';
 
-        // Thumbnail
+        // Thumbnail (secure download)
         const thumbContent = thumbStat.status === 'pending'
           ? '<span class="badge-pending">pending</span>'
           : video.thumbnail
             ? `
-              <a href="${video.thumbnail.url}" download="${video.thumbnail.name}" class="btn-download" title="Download thumbnail">
-                ${video.thumbnail.name}
-              </a>
+              <button type="button" class="btn-download btn-download-secure" data-url="${escapeHtml(video.thumbnail.url)}" data-filename="${escapeHtml(video.thumbnail.name)}" title="Download thumbnail" style="border: none; background: transparent; cursor: pointer; text-align: left; padding: 0;">
+                ${escapeHtml(video.thumbnail.name)}
+              </button>
             `
             : '<span class="helper-text">—</span>';
 
@@ -164,11 +182,8 @@ export function renderAdminProductionTableView(container, navigate) {
               <span style="font-weight: 600; color: var(--text-primary);">Channel: ${currentChannel.name}</span>
               <span class="helper-text">• Total Videos: <strong style="color: var(--text-primary);">${channelVideos.length}</strong></span>
               <span class="helper-text">• Selected: <strong style="color: var(--text-primary);">${selectedVideoIds.size}</strong></span>
-              <span class="helper-text">• Pending Cells: <strong style="color: ${totalPendingCells > 0 ? 'var(--pending-text)' : 'var(--text-primary)'};">${totalPendingCells}</strong></span>
+              <span class="helper-text">• Pending: <strong style="color: ${totalPendingCells > 0 ? 'var(--pending-text)' : 'var(--text-primary)'};">${totalPendingCells}</strong></span>
               <span class="helper-text">• Completed: <strong style="color: var(--success-text);">${completedVideosCount} / ${channelVideos.length}</strong></span>
-            </div>
-            <div class="helper-text">
-              Rule: Select videos using the leftmost checkbox column to send targeted notifications.
             </div>
           </div>
 
@@ -177,14 +192,14 @@ export function renderAdminProductionTableView(container, navigate) {
               <thead>
                 <tr>
                   <th style="width: 36px; text-align: center; padding: 6px 2px;">
-                    <input type="checkbox" id="check-all-videos" ${areAllSelected ? 'checked' : ''} title="Select / Deselect all" style="cursor: pointer; width: 15px; height: 15px;" />
+                    <input type="checkbox" id="check-all-videos" ${areAllSelected ? 'checked' : ''} title="Select all" style="cursor: pointer; width: 15px; height: 15px;" />
                   </th>
                   <th style="width: 68px; text-align: center; padding: 6px 4px;">Video #</th>
-                  <th style="width: 22%;">Titles (copyable)</th>
-                  <th style="width: 21%;">Script (copyable)</th>
-                  <th style="width: 14%;">voiceover (downloadable)</th>
-                  <th style="width: 14%;">thumbnail (downloadable)</th>
-                  <th style="width: 21%;">Meta Info (copyable)</th>
+                  <th style="width: 22%;">Titles</th>
+                  <th style="width: 21%;">Script</th>
+                  <th style="width: 14%;">Voiceover</th>
+                  <th style="width: 14%;">Thumbnail</th>
+                  <th style="width: 21%;">Meta Info</th>
                   <th style="width: 54px; text-align: center; padding: 6px 2px;">Status</th>
                 </tr>
               </thead>
@@ -325,6 +340,40 @@ export function renderAdminProductionTableView(container, navigate) {
         } catch (err) {
           console.error('Copy failed:', err);
         }
+      });
+    });
+
+    // Toggle in-browser audio player
+    container.querySelectorAll('.btn-toggle-audio-player').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const targetId = btn.dataset.target;
+        const player = container.querySelector(`#${targetId}`);
+        if (player) {
+          const isHidden = player.style.display === 'none';
+          player.style.display = isHidden ? 'block' : 'none';
+          btn.textContent = isHidden ? '⏸️' : '▶️';
+          if (isHidden) {
+            player.play().catch(() => {});
+          } else {
+            player.pause();
+          }
+        }
+      });
+    });
+
+    // Secure in-browser file download handler
+    container.querySelectorAll('.btn-download-secure').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const url = btn.dataset.url;
+        const filename = btn.dataset.filename || 'download';
+        const origText = btn.innerHTML;
+        btn.textContent = 'Downloading...';
+        btn.disabled = true;
+        await downloadFileSecurely(url, filename);
+        btn.innerHTML = origText;
+        btn.disabled = false;
       });
     });
   }
