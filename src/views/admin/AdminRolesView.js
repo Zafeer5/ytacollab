@@ -12,6 +12,7 @@ function escapeHtml(str) {
 
 export function renderAdminRolesView(container, navigate) {
   let editingRoleId = null;
+  let editingPromptId = null;
   let feedbackMessage = '';
 
   // Persistent filter state across renders and tab switches
@@ -98,23 +99,83 @@ export function renderAdminRolesView(container, navigate) {
 
     // Prompts list HTML
     const promptsListHtml = filteredPrompts
-      .map((p) => `
-        <div class="prompt-card" style="padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background-color: var(--bg); margin-bottom: 10px;">
-          <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
-            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-              <span class="sidebar-tag" style="background: rgba(99, 102, 241, 0.12); color: #818cf8; border-color: rgba(99, 102, 241, 0.3); font-weight: 500;">
-                ${escapeHtml(p.channelName || 'All Channels')}
-              </span>
-              <span class="sidebar-tag" style="color: var(--text-primary); border-color: var(--text-primary);">
-                ${escapeHtml(p.roleName)}
-              </span>
-              <strong style="color: var(--text-primary); font-size: 13px;">${escapeHtml(p.label)}</strong>
+      .map((p) => {
+        const isEditing = editingPromptId === p.id;
+        if (isEditing) {
+          const editChanOpts = [
+            ...channels.map((c) => `<option value="${c.id}" ${c.id === p.channelId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`),
+            `<option value="__all__" ${!p.channelId ? 'selected' : ''}>All Channels (Global Prompt)</option>`
+          ].join('');
+
+          const editRoleOpts = roles
+            .map((r) => `<option value="${r.name}" ${r.name.toLowerCase() === (p.roleName || '').toLowerCase() ? 'selected' : ''}>${escapeHtml(r.name)}</option>`)
+            .join('');
+
+          return `
+            <div class="prompt-card prompt-card-editing" style="padding: 14px; border: 1px solid var(--primary); border-radius: var(--radius); background-color: var(--surface); margin-bottom: 12px; box-shadow: 0 0 0 1px rgba(99, 102, 241, 0.25);">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">
+                <span style="font-weight: 600; font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
+                  <span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--primary);"></span>
+                  Edit Prompt
+                </span>
+                <span class="helper-text" style="font-size: 11px;">Editing in-place</span>
+              </div>
+
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 10px;">
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label for="edit-prompt-channel-${p.id}" style="font-size: 11px; margin-bottom: 4px; display: block; color: var(--text-secondary);">Target Channel</label>
+                  <select id="edit-prompt-channel-${p.id}" style="width: 100%; padding: 6px 8px; font-size: 13px;">
+                    ${editChanOpts}
+                  </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label for="edit-prompt-role-${p.id}" style="font-size: 11px; margin-bottom: 4px; display: block; color: var(--text-secondary);">Target Role / Task</label>
+                  <select id="edit-prompt-role-${p.id}" style="width: 100%; padding: 6px 8px; font-size: 13px;">
+                    ${editRoleOpts}
+                  </select>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 0;">
+                  <label for="edit-prompt-label-${p.id}" style="font-size: 11px; margin-bottom: 4px; display: block; color: var(--text-secondary);">Prompt Title / Label</label>
+                  <input type="text" id="edit-prompt-label-${p.id}" value="${escapeHtml(p.label)}" style="width: 100%; padding: 6px 8px; font-size: 13px;" required />
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 12px;">
+                <label for="edit-prompt-text-${p.id}" style="font-size: 11px; margin-bottom: 4px; display: block; color: var(--text-secondary);">Prompt Content</label>
+                <textarea id="edit-prompt-text-${p.id}" rows="4" style="width: 100%; box-sizing: border-box; font-family: inherit; font-size: 13px; line-height: 1.5; padding: 8px 10px; resize: vertical;" required>${escapeHtml(p.promptText)}</textarea>
+              </div>
+
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <button type="button" class="btn btn-primary btn-sm save-edit-prompt-btn" data-id="${p.id}">Save Changes</button>
+                <button type="button" class="btn btn-secondary btn-sm cancel-edit-prompt-btn" data-id="${p.id}">Cancel</button>
+              </div>
             </div>
-            <button class="btn btn-danger btn-sm delete-prompt-btn" data-id="${p.id}">Delete</button>
+          `;
+        }
+
+        return `
+          <div class="prompt-card" style="padding: 12px; border: 1px solid var(--border); border-radius: var(--radius); background-color: var(--bg); margin-bottom: 10px;">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; flex-wrap: wrap; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <span class="sidebar-tag" style="background: rgba(99, 102, 241, 0.12); color: #818cf8; border-color: rgba(99, 102, 241, 0.3); font-weight: 500;">
+                  ${escapeHtml(p.channelName || 'All Channels')}
+                </span>
+                <span class="sidebar-tag" style="color: var(--text-primary); border-color: var(--text-primary);">
+                  ${escapeHtml(p.roleName)}
+                </span>
+                <strong style="color: var(--text-primary); font-size: 13px;">${escapeHtml(p.label)}</strong>
+              </div>
+              <div style="display: flex; gap: 6px; align-items: center;">
+                <button class="btn btn-secondary btn-sm edit-prompt-btn" data-id="${p.id}">Edit</button>
+                <button class="btn btn-danger btn-sm delete-prompt-btn" data-id="${p.id}">Delete</button>
+              </div>
+            </div>
+            <div class="prompt-scrollable-content" style="max-height: 85px;">${escapeHtml(p.promptText)}</div>
           </div>
-          <div class="prompt-scrollable-content" style="max-height: 85px;">${escapeHtml(p.promptText)}</div>
-        </div>
-      `)
+        `;
+      })
       .join('');
 
     // Channel options for prompt form
@@ -231,7 +292,7 @@ export function renderAdminRolesView(container, navigate) {
             </div>
           </div>
 
-          <div class="scrollable-container" style="max-height: 280px; padding: 4px;">
+          <div class="scrollable-container" style="max-height: 520px; padding: 4px;">
             ${promptsListHtml || '<div style="padding: 20px; text-align: center;" class="helper-text">No prompts found matching your filter. Add prompts above for team members to copy during content production.</div>'}
           </div>
         </div>
@@ -407,10 +468,66 @@ export function renderAdminRolesView(container, navigate) {
     // Prompt Delete
     container.querySelectorAll('.delete-prompt-btn').forEach((btn) => {
       btn.addEventListener('click', async (e) => {
-        const id = e.target.dataset.id;
+        const id = e.currentTarget.dataset.id || e.target.dataset.id;
         btn.disabled = true;
         await store.deleteRolePrompt(id);
         feedbackMessage = 'Prompt deleted.';
+        render();
+      });
+    });
+
+    // Prompt Edit & Save Handlers
+    container.querySelectorAll('.edit-prompt-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        editingPromptId = e.currentTarget.dataset.id || e.target.dataset.id;
+        render();
+      });
+    });
+
+    container.querySelectorAll('.cancel-edit-prompt-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        editingPromptId = null;
+        render();
+      });
+    });
+
+    container.querySelectorAll('.save-edit-prompt-btn').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        const id = e.currentTarget.dataset.id || e.target.dataset.id;
+        const cSelect = container.querySelector(`#edit-prompt-channel-${id}`);
+        const rSelect = container.querySelector(`#edit-prompt-role-${id}`);
+        const lInput = container.querySelector(`#edit-prompt-label-${id}`);
+        const tInput = container.querySelector(`#edit-prompt-text-${id}`);
+
+        if (!lInput || !tInput) return;
+
+        const newLabel = lInput.value.trim();
+        const newText = tInput.value.trim();
+        const newChanId = cSelect ? cSelect.value : null;
+        const newRoleName = rSelect ? rSelect.value : '';
+
+        if (!newLabel) {
+          feedbackMessage = 'Prompt title / label cannot be empty.';
+          render();
+          return;
+        }
+
+        if (!newText) {
+          feedbackMessage = 'Prompt content cannot be empty.';
+          render();
+          return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Saving...';
+
+        const success = await store.editRolePrompt(id, newChanId, newRoleName, newLabel, newText);
+        if (success) {
+          feedbackMessage = `Prompt "${newLabel}" updated successfully.`;
+          editingPromptId = null;
+        } else {
+          feedbackMessage = 'Failed to update prompt. Please check your inputs and try again.';
+        }
         render();
       });
     });

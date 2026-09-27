@@ -1003,6 +1003,61 @@ class SupabaseStore {
     return { id: data.id, roleName, channelId: payload.channel_id || null, channelName, label, promptText };
   }
 
+  async editRolePrompt(id, channelId, roleName, label, promptText) {
+    const role = this.state.roles.find((r) => r.name.toLowerCase() === (roleName || '').toLowerCase());
+    if (!role) return false;
+
+    const trimmedLabel = (label || 'Prompt').trim();
+    const trimmedText = (promptText || '').trim();
+    const targetChannelId = (channelId && channelId !== '__all__') ? channelId : null;
+
+    const payload = {
+      role_id: role.id,
+      label: trimmedLabel,
+      prompt_text: trimmedText,
+      channel_id: targetChannelId
+    };
+
+    let updateRes = await supabase
+      .from('role_prompts')
+      .update(payload)
+      .eq('id', id)
+      .select()
+      .single();
+
+    // Fallback if channel_id column does not exist yet in Supabase
+    if (updateRes.error && (updateRes.error.code === '42703' || updateRes.error.message?.includes('channel_id')) && payload.channel_id) {
+      delete payload.channel_id;
+      updateRes = await supabase
+        .from('role_prompts')
+        .update(payload)
+        .eq('id', id)
+        .select()
+        .single();
+    }
+
+    if (updateRes.error) {
+      console.error('Failed to update role prompt:', updateRes.error);
+      return false;
+    }
+
+    const channelObj = targetChannelId
+      ? this.state.channels.find((c) => c.id === targetChannelId)
+      : null;
+    const channelName = channelObj ? channelObj.name : 'All Channels';
+
+    await this.addLedgerEntry({
+      action: `updated prompt "${trimmedLabel}" for role "${role.name}" (${channelName})`,
+      task: 'Role Prompts',
+      channelId: channelObj ? channelObj.id : null,
+      channel: channelName,
+      fileReference: trimmedLabel
+    });
+
+    await this.refreshAll();
+    return true;
+  }
+
   async deleteRolePrompt(id) {
     const { error } = await supabase.from('role_prompts').delete().eq('id', id);
     if (error) return false;
