@@ -10,6 +10,15 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+function getSubmissionStatusCode(roleName) {
+  const normalizedRole = String(roleName || '').trim().toLowerCase();
+  if (normalizedRole.includes('thumbnail') || normalizedRole.includes('thumb')) return 'T';
+  if (normalizedRole.includes('meta') || normalizedRole.includes('description')) return 'D';
+  if (normalizedRole.includes('voice')) return 'V';
+  if (normalizedRole.includes('script')) return 'S';
+  return '';
+}
+
 // Session-level persistent state for team member view across renders & store updates
 const teamSession = {
   localFiles: {},
@@ -130,14 +139,43 @@ export function renderTeamMemberView(container, navigate) {
       ...channels.map((c) => `<option value="${c.id}" ${c.id === selectedChannelId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`)
     ].join('');
 
-    // Video # dropdown options (displays "(marked as done)" when checked by admin)
-    const videoNumOptions = [
-      `<option value="" ${!selectedVideoNum ? 'selected' : ''}>-- Select Video # --</option>`,
-      ...channelVideos.map((v) => {
-        const doneLabel = v.status ? ' (marked as done)' : '';
-        return `<option value="${v.videoNumber}" ${String(v.videoNumber) === String(selectedVideoNum) ? 'selected' : ''}>Video ${v.videoNumber}${doneLabel}</option>`;
-      })
-    ].join('');
+    const assignedRoleNames = new Set(assignedRoles.map((roleName) => roleName.toLowerCase()));
+    const submissionStatusCodes = new Map();
+    (state.submissions || []).forEach((submission) => {
+      if (!submission.roles?.name || !assignedRoleNames.has(submission.roles.name.toLowerCase())) return;
+      const statusCode = getSubmissionStatusCode(submission.roles.name);
+      if (!statusCode) return;
+      if (!submissionStatusCodes.has(submission.video_id)) {
+        submissionStatusCodes.set(submission.video_id, new Set());
+      }
+      submissionStatusCodes.get(submission.video_id).add(statusCode);
+    });
+
+    const videoStatusLabels = { T: 'Thumbnail', D: 'Description', V: 'Voiceover', S: 'Script' };
+    const videoStatusBoxes = (video) => [...(submissionStatusCodes.get(video.id) || [])]
+      .map((code) => `<span class="video-status-box video-status-${code.toLowerCase()}" title="${videoStatusLabels[code]} submitted" aria-hidden="true">${code}</span>`)
+      .join('');
+    const selectedVideo = channelVideos.find((video) => String(video.videoNumber) === String(selectedVideoNum));
+    const videoPickerOptions = channelVideos.length
+      ? channelVideos.map((video) => {
+          const selected = String(video.videoNumber) === String(selectedVideoNum);
+          const submittedStatuses = [...(submissionStatusCodes.get(video.id) || [])]
+            .map((code) => `${videoStatusLabels[code]} submitted`);
+          const statusDescription = submittedStatuses.length ? `. ${submittedStatuses.join(', ')}` : '';
+          const doneLabel = video.status ? ', marked as done' : '';
+          return `
+            <button type="button" class="video-picker-option${selected ? ' selected' : ''}"
+              aria-pressed="${selected}" aria-label="Video ${video.videoNumber}${doneLabel}${statusDescription}"
+              data-video-number="${video.videoNumber}">
+              <span>Video ${video.videoNumber}${video.status ? '<span class="video-done-label">Done</span>' : ''}</span>
+              <span class="video-status-boxes">${videoStatusBoxes(video)}</span>
+            </button>
+          `;
+        }).join('')
+      : '<p class="video-picker-empty">No videos available for this channel yet.</p>';
+    const videoPickerLabel = selectedVideo
+      ? `Video ${selectedVideo.videoNumber}`
+      : channelVideos.length ? 'Select Video #' : 'No videos available';
 
     // User notifications
     const myNotifications = (state.notifications || []).filter(
@@ -594,12 +632,15 @@ export function renderTeamMemberView(container, navigate) {
 
             <div class="form-group" style="margin-bottom: 0;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <label for="member-video-select" style="margin-bottom: 0;">Select Video #</label>
+                <label id="member-video-label" style="margin-bottom: 0;">Select Video #</label>
                 ${currentVideo?.status ? '<span class="badge-done">✓ (marked as done)</span>' : ''}
               </div>
-              <select id="member-video-select" ${!selectedChannelId ? 'disabled' : ''}>
-                ${videoNumOptions || '<option value="">No videos available</option>'}
-              </select>
+              <details class="video-picker" id="member-video-picker" ${!selectedChannelId ? 'inert' : ''}>
+                <summary id="member-video-select" aria-label="${escapeHtml(videoPickerLabel)}" aria-describedby="member-video-label">${videoPickerLabel}</summary>
+                  <div class="video-picker-menu" role="group" aria-label="Videos">
+                    ${videoPickerOptions}
+                  </div>
+                </details>
             </div>
           </div>
 
@@ -702,13 +743,15 @@ export function renderTeamMemberView(container, navigate) {
       });
     }
 
-    const vidSelect = container.querySelector('#member-video-select');
-    if (vidSelect) {
-      vidSelect.addEventListener('change', (e) => {
-        selectedVideoNum = e.target.value;
-        sessionStorage.setItem('yta_team_video_num', selectedVideoNum);
-        clearTeamSession();
-        render();
+    const videoPicker = container.querySelector('#member-video-picker');
+    if (videoPicker && selectedChannelId && channelVideos.length) {
+      videoPicker.querySelectorAll('[data-video-number]').forEach((option) => {
+        option.addEventListener('click', () => {
+          selectedVideoNum = option.dataset.videoNumber;
+          sessionStorage.setItem('yta_team_video_num', selectedVideoNum);
+          clearTeamSession();
+          render();
+        });
       });
     }
 

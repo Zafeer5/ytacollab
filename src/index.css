@@ -4,6 +4,7 @@
    ============================================================================== */
 
 :root {
+  color-scheme: dark;
   --bg: #09090b;
   --surface: #121216;
   --surface-hover: #1c1c22;
@@ -11,7 +12,7 @@
   --border-focus: #52525b;
   --text-primary: #f4f4f5;
   --text-secondary: #a1a1aa;
-  --text-muted: #71717a;
+  --text-muted: #a1a1aa;
   --accent: #ff7a00;
   --accent-text: #09090b;
   --cta-orange: #ff7a00;
@@ -25,7 +26,7 @@
   --success-bg: #0f291e;
   --success-border: #14532d;
   --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --radius: 4px;
+  --radius: 8px;
   --sidebar-width: 230px;
   --sidebar-collapsed-width: 64px;
 }
@@ -48,6 +49,8 @@ html, body {
   font-size: 14px;
   line-height: 1.5;
   min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -56,6 +59,11 @@ html, body {
   flex-direction: column;
   min-height: 100vh;
   max-width: 100%;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 /* App Header */
@@ -575,6 +583,157 @@ input[type="checkbox"] {
   letter-spacing: -0.01em;
 }
 
+.video-picker {
+  position: relative;
+}
+
+.video-picker summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-primary);
+  cursor: pointer;
+  list-style: none;
+}
+
+.video-picker summary::-webkit-details-marker {
+  display: none;
+}
+
+.video-picker summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--text-secondary);
+  border-bottom: 2px solid var(--text-secondary);
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 0.15s ease;
+}
+
+.video-picker[open] summary {
+  border-color: var(--border-focus);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.video-picker[open] summary::after {
+  transform: rotate(225deg) translate(-2px, -1px);
+}
+
+.video-picker[inert] summary {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.video-picker-menu {
+  position: absolute;
+  inset: 100% 0 auto;
+  z-index: 30;
+  max-height: min(280px, 50dvh);
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border-focus);
+  border-top: 0;
+  border-radius: 0 0 var(--radius) var(--radius);
+  background: var(--surface);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.38);
+}
+
+.video-picker-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.video-picker-option:hover,
+.video-picker-option:focus-visible {
+  background: var(--surface-hover);
+}
+
+.video-picker-option.selected {
+  border-color: var(--border);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.video-picker-option > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.video-picker-empty {
+  padding: 12px 9px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.video-done-label {
+  color: var(--success-text);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.video-status-boxes {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.video-status-box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.video-status-t {
+  border-color: #b45309;
+  background: #451a03;
+  color: #fbbf24;
+}
+
+.video-status-d {
+  border-color: #0369a1;
+  background: #082f49;
+  color: #7dd3fc;
+}
+
+.video-status-v {
+  border-color: #7e22ce;
+  background: #2e1065;
+  color: #d8b4fe;
+}
+
+.video-status-s {
+  border-color: #15803d;
+  background: #052e16;
+  color: #86efac;
+}
+
 .nav-btn {
   background: transparent;
   border: 1px solid transparent;
@@ -610,6 +769,7 @@ input[type="checkbox"] {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
 /* Scrollable Container Wrappers */
@@ -1487,6 +1647,3 @@ tr.row-selected td {
   border-radius: 4px;
   cursor: pointer;
 }
-
-
-

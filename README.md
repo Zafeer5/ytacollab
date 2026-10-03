@@ -11,7 +11,7 @@ Unified multi-platform backend powered by **Supabase** for both the Web applicat
 - **Role-Based Access Control (RBAC)**:
   - **Admin Dashboard**: YouTube channel creation, line-by-line title batching, custom role and task definitions, prompt guidelines editor, team member management, and complete ledger inspection.
   - **Master Production Table**: Real-time status overview of every video, copyable scripts & titles, downloadable voiceover audio & thumbnail files, completion checkboxes, and one-click notification alerts.
-  - **Team Member Interface**: Contextual task workspace scoped strictly to assigned roles (Script, Voiceover, Thumbnail, Meta Info, custom), with compact scrollable prompts, on-page submission status, and atomic overwrite protection.
+  - **Team Member Interface**: Contextual task workspace scoped strictly to assigned roles (Script, Voiceover, Thumbnail, Meta Info, custom), with compact scrollable prompts, on-page submission status, and atomic overwrite protection. The video picker marks submitted Thumbnail (T), Description (D), Voiceover (V), and Script (S) work only for roles assigned to the signed-in member.
 - **Real-Time Supabase Database**:
   - Live synchronization across sessions using Supabase Realtime WebSocket publications (`supabase_realtime`).
   - Storage bucket integration for media assets (`thumbnails` and `voiceovers`).
