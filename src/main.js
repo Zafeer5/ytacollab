@@ -11,6 +11,7 @@ import { renderAdminRolesView } from './views/admin/AdminRolesView.js';
 import { renderAdminMembersView } from './views/admin/AdminMembersView.js';
 import { renderAdminDatabaseView } from './views/admin/AdminDatabaseView.js';
 import { renderAdminRealtimeView } from './views/admin/AdminRealtimeView.js';
+import { renderAdminSubmitView } from './views/admin/AdminSubmitView.js';
 import { renderTeamMemberView } from './views/team/TeamMemberView.js';
 
 const appEl = document.getElementById('app');
@@ -59,6 +60,10 @@ function renderAdminViewForHash(hash, mountEl, navigate) {
 
     case '#/admin/realtime':
       renderAdminRealtimeView(mountEl, navigate);
+      break;
+
+    case '#/admin/submit':
+      renderAdminSubmitView(mountEl, navigate);
       break;
 
     default:

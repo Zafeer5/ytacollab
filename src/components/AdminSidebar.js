@@ -14,7 +14,23 @@ export function renderAdminSidebar(container, currentHash, navigate) {
     { route: '#/admin/realtime', label: 'Real-Time Updates', tag: 'LIVE' }
   ];
 
+  const directNavItems = [
+    { route: '#/admin/submit', label: 'Direct Submission', tag: 'SUBMIT' }
+  ];
+
   const navLinksHtml = navItems
+    .map((item) => {
+      const isActive = currentHash === item.route;
+      return `
+        <button class="sidebar-item ${isActive ? 'active' : ''}" data-route="${item.route}" title="${item.label}">
+          <span class="sidebar-tag">${item.tag}</span>
+          <span class="sidebar-label">${item.label}</span>
+        </button>
+      `;
+    })
+    .join('');
+
+  const directLinksHtml = directNavItems
     .map((item) => {
       const isActive = currentHash === item.route;
       return `
@@ -43,6 +59,9 @@ export function renderAdminSidebar(container, currentHash, navigate) {
 
       <nav class="sidebar-nav">
         ${navLinksHtml}
+        <div class="sidebar-section-divider"></div>
+        <div class="sidebar-section-header">Direct Actions</div>
+        ${directLinksHtml}
       </nav>
 
       <div class="sidebar-footer">

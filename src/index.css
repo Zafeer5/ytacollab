@@ -275,6 +275,26 @@ html, body {
   padding: 9px 0;
 }
 
+.sidebar-section-divider {
+  height: 1px;
+  background-color: var(--border);
+  margin: 10px 4px;
+}
+
+.sidebar-section-header {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 6px 10px 4px;
+  user-select: none;
+}
+
+.admin-sidebar.collapsed .sidebar-section-header {
+  display: none;
+}
+
 .sidebar-footer {
   padding: 10px 8px;
   border-top: 1px solid var(--border);
@@ -1790,4 +1810,191 @@ tr.row-selected td {
   border-top: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.01);
 }
+
+/* ==============================================================================
+   Admin Direct Submission View
+   ============================================================================== */
+.admin-submit-split {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .admin-submit-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.admin-fetched-title-box {
+  padding: 10px 14px;
+  background-color: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  word-break: break-word;
+}
+
+.admin-elements-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.admin-element-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  color: var(--text-primary);
+  font-family: inherit;
+  transition: all 0.15s ease;
+}
+
+.admin-element-card:hover {
+  background-color: var(--surface-hover);
+  border-color: var(--border-focus);
+}
+
+.admin-element-card.active {
+  background-color: rgba(255, 122, 0, 0.08);
+  border-color: var(--accent);
+}
+
+.element-card-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.admin-element-card.active .element-card-icon {
+  background: rgba(255, 122, 0, 0.15);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.element-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.element-card-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.element-card-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.admin-element-card.active .element-card-name {
+  color: var(--accent);
+}
+
+.element-card-type {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.element-card-summary {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 1px;
+}
+
+.element-card-status {
+  flex-shrink: 0;
+}
+
+.workspace-card {
+  padding: 20px;
+}
+
+.workspace-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+
+.existing-db-card {
+  padding: 12px 14px;
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+}
+
+.existing-db-tag {
+  font-size: 11px;
+  font-weight: 700;
+  color: #10b981;
+}
+
+.file-dropzone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 26px 16px;
+  text-align: center;
+  background-color: rgba(255, 255, 255, 0.01);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.file-dropzone:hover,
+.file-dropzone.drag-over {
+  border-color: var(--accent);
+  background-color: rgba(255, 122, 0, 0.04);
+}
+
+.staged-file-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-top: 12px;
+}
+
+.staged-file-preview img {
+  width: 100px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
 
