@@ -397,6 +397,7 @@ function formatTimestamp(date = new Date()) {
 class SupabaseStore {
   constructor() {
     this.subscribers = new Set();
+    this.backgroundUploads = new Map();
 
     // Fast-cache user profile from localStorage for synchronous route rehydration on refresh
     let cachedUser = null;
@@ -1664,19 +1665,146 @@ class SupabaseStore {
       return { success: false, error: subErr.message };
     }
 
-    const chan = this.state.channels.find((c) => c.id === channelId);
-    const actionDesc = file ? `uploaded ${task}` : `submitted ${task}`;
+    // 1. FAST OPTIMISTIC IN-MEMORY STATE UPDATE (Instant UI update without network lag)
+    if (normTask.includes('voice')) {
+      vid.voiceover = { name: fileName, url: filePath };
+    } else if (normTask.includes('thumb')) {
+      vid.thumbnail = { name: fileName, url: filePath };
+    } else if (normTask.includes('script')) {
+      vid.script = textValue ? textValue.trim() : '';
+    } else if (normTask.includes('meta')) {
+      vid.metaInfo = textValue ? textValue.trim() : '';
+    } else {
+      if (!vid.customFields) vid.customFields = {};
+      vid.customFields[role.name] = file ? { name: fileName, url: filePath } : (textValue || '');
+    }
 
-    await this.addLedgerEntry({
+    // Sync submissions table in-memory state
+    const existingSubIdx = this.state.submissions.findIndex((s) => s.video_id === vid.id && s.role_id === role.id);
+    const subRecord = { ...submissionRow, roles: { name: role.name } };
+    if (existingSubIdx >= 0) {
+      this.state.submissions[existingSubIdx] = subRecord;
+    } else {
+      this.state.submissions.push(subRecord);
+    }
+
+    this.notifySubscribers();
+
+    // 2. Non-blocking asynchronous background ledger entry & full refresh
+    const actionDesc = file ? `uploaded ${task}` : `submitted ${task}`;
+    this.addLedgerEntry({
       action: actionDesc,
       channelId: channelId,
       videoId: vid.id,
       task: task,
       fileReference: fileName || (textValue ? textValue.slice(0, 40) : '')
-    });
+    }).catch((err) => console.warn('Background ledger logging warning:', err));
 
-    await this.refreshAll();
-    return { success: true };
+    this.refreshAll().catch((err) => console.warn('Background refresh warning:', err));
+
+    return { success: true, filePath, fileName };
+  }
+
+  // --- Background Upload Queue Manager ---
+  startBackgroundUpload({ channelId, videoNumber, task, textValue, file }) {
+    const normTask = (task || '').trim().toLowerCase();
+    const uploadKey = `${channelId}_vid_${videoNumber}_${normTask}`;
+    const taskName = (task || '').trim();
+    const fileName = file ? file.name : (textValue ? textValue.slice(0, 30) : 'content');
+
+    const uploadInfo = {
+      key: uploadKey,
+      channelId,
+      videoNumber: Number(videoNumber),
+      task: taskName,
+      normTask,
+      fileName,
+      fileSize: file ? file.size : 0,
+      status: 'uploading',
+      startedAt: Date.now(),
+      completedAt: null,
+      error: null
+    };
+
+    if (!this.backgroundUploads) {
+      this.backgroundUploads = new Map();
+    }
+
+    this.backgroundUploads.set(uploadKey, uploadInfo);
+    this.notifySubscribers();
+
+    // Run upload asynchronously in background detached from component render life-cycle
+    (async () => {
+      try {
+        const res = await this.submitContent({
+          channelId,
+          videoNumber,
+          task: taskName,
+          textValue,
+          file
+        });
+
+        if (res.success) {
+          uploadInfo.status = 'completed';
+          uploadInfo.completedAt = Date.now();
+          this.backgroundUploads.set(uploadKey, uploadInfo);
+          this.notifySubscribers();
+
+          // Auto-remove completed upload from background active list after 12 seconds
+          setTimeout(() => {
+            const current = this.backgroundUploads.get(uploadKey);
+            if (current && current.status === 'completed') {
+              this.backgroundUploads.delete(uploadKey);
+              this.notifySubscribers();
+            }
+          }, 12000);
+        } else {
+          uploadInfo.status = 'error';
+          uploadInfo.error = res.error || 'Upload failed';
+          this.backgroundUploads.set(uploadKey, uploadInfo);
+          this.notifySubscribers();
+        }
+      } catch (err) {
+        console.error('Background upload exception:', err);
+        uploadInfo.status = 'error';
+        uploadInfo.error = err.message || 'Upload exception';
+        this.backgroundUploads.set(uploadKey, uploadInfo);
+        this.notifySubscribers();
+      }
+    })();
+
+    return uploadInfo;
+  }
+
+  getBackgroundUpload(channelId, videoNumber, task) {
+    if (!this.backgroundUploads) return null;
+    const normTask = (task || '').trim().toLowerCase();
+    const uploadKey = `${channelId}_vid_${videoNumber}_${normTask}`;
+    return this.backgroundUploads.get(uploadKey) || null;
+  }
+
+  getVideoUploads(channelId, videoNumber) {
+    if (!this.backgroundUploads) return [];
+    return Array.from(this.backgroundUploads.values()).filter(
+      (u) => u.channelId === channelId && Number(u.videoNumber) === Number(videoNumber)
+    );
+  }
+
+  getAllActiveUploads() {
+    if (!this.backgroundUploads) return [];
+    return Array.from(this.backgroundUploads.values()).filter((u) => u.status === 'uploading');
+  }
+
+  getAllUploads() {
+    if (!this.backgroundUploads) return [];
+    return Array.from(this.backgroundUploads.values());
+  }
+
+  dismissBackgroundUpload(key) {
+    if (this.backgroundUploads) {
+      this.backgroundUploads.delete(key);
+      this.notifySubscribers();
+    }
   }
 
   // --- Status Checkbox ---

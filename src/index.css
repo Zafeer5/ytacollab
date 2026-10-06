@@ -1997,4 +1997,56 @@ tr.row-selected td {
   flex-shrink: 0;
 }
 
+/* Background Upload Animations & Indicators */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 1; border-color: var(--accent); }
+  50% { opacity: 0.6; border-color: rgba(255, 122, 0, 0.4); }
+}
+
+.upload-spin-icon {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 122, 0, 0.3);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.active-uploads-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(255, 122, 0, 0.08);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  margin-bottom: 14px;
+}
+
+.active-upload-status-card {
+  padding: 12px 14px;
+  background: rgba(255, 122, 0, 0.06);
+  border: 1px dashed var(--accent);
+  border-radius: var(--radius);
+  margin-top: 10px;
+  margin-bottom: 12px;
+}
+
+.video-status-box.video-status-uploading {
+  background: rgba(255, 122, 0, 0.2);
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  animation: pulse-glow 1.5s infinite ease-in-out;
+}
+
+
 

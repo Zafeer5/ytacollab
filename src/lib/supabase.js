@@ -25,16 +25,31 @@ export const supabaseAuthHelper = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, 
   }
 });
 
-// Storage upload helper
+// Storage upload helper - optimized with MIME detection, caching, and fast direct upload
 export async function uploadStorageFile(bucket, path, file) {
-  const fileExt = file.name ? file.name.split('.').pop() : 'dat';
-  const cleanPath = `${Date.now()}_${Math.random().toString(36).substr(2, 5)}.${fileExt}`;
+  const fileExt = (file.name ? file.name.split('.').pop() : 'dat').toLowerCase();
+  const cleanPath = `${Date.now()}_${Math.random().toString(36).substr(2, 6)}.${fileExt}`;
   const fullPath = path ? `${path}/${cleanPath}` : cleanPath;
+
+  const mimeMap = {
+    mp3: 'audio/mpeg',
+    wav: 'audio/wav',
+    m4a: 'audio/mp4',
+    aac: 'audio/aac',
+    ogg: 'audio/ogg',
+    flac: 'audio/flac',
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    webp: 'image/webp'
+  };
+  const contentType = file.type || mimeMap[fileExt] || 'application/octet-stream';
 
   try {
     const { data, error } = await supabase.storage.from(bucket).upload(fullPath, file, {
-      upsert: true,
-      contentType: file.type || undefined
+      upsert: false,
+      cacheControl: '3600',
+      contentType: contentType
     });
 
     if (error) {

@@ -15,22 +15,66 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-// Persistent session cache for admin direct submission view
+// Persistent session cache for admin direct submission view (scoped per-video)
 const submitSession = {
-  localFiles: {},
-  previewUrls: {},
-  drafts: {},
-  feedback: null
+  filesByVideo: {}, // { [videoNum]: { thumbnail: File, voiceover: File, ... } }
+  previewUrlsByVideo: {}, // { [videoNum]: { thumbnail: url, voiceover: url, ... } }
+  draftsByVideo: {}, // { [videoNum]: { script: '...', meta: '...', ... } }
+  feedbackByVideo: {} // { [videoNum]: { type: 'success'|'error', text: '...' } }
 };
 
-function clearSessionFiles() {
-  Object.values(submitSession.previewUrls).forEach((url) => {
+function getStagedFile(vNum, key) {
+  return submitSession.filesByVideo[vNum]?.[key] || null;
+}
+
+function setStagedFile(vNum, key, file) {
+  if (!submitSession.filesByVideo[vNum]) submitSession.filesByVideo[vNum] = {};
+  submitSession.filesByVideo[vNum][key] = file;
+}
+
+function clearStagedFile(vNum, key) {
+  if (submitSession.filesByVideo[vNum]) {
+    delete submitSession.filesByVideo[vNum][key];
+  }
+  if (submitSession.previewUrlsByVideo[vNum]?.[key]) {
     try {
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(submitSession.previewUrlsByVideo[vNum][key]);
     } catch (e) {}
-  });
-  submitSession.localFiles = {};
-  submitSession.previewUrls = {};
+    delete submitSession.previewUrlsByVideo[vNum][key];
+  }
+}
+
+function getPreviewUrl(vNum, key) {
+  return submitSession.previewUrlsByVideo[vNum]?.[key] || null;
+}
+
+function setPreviewUrl(vNum, key, url) {
+  if (!submitSession.previewUrlsByVideo[vNum]) submitSession.previewUrlsByVideo[vNum] = {};
+  submitSession.previewUrlsByVideo[vNum][key] = url;
+}
+
+function getDraft(vNum, key, defaultVal = '') {
+  if (submitSession.draftsByVideo[vNum]?.[key] !== undefined) {
+    return submitSession.draftsByVideo[vNum][key];
+  }
+  return defaultVal;
+}
+
+function setDraft(vNum, key, text) {
+  if (!submitSession.draftsByVideo[vNum]) submitSession.draftsByVideo[vNum] = {};
+  submitSession.draftsByVideo[vNum][key] = text;
+}
+
+function getFeedback(vNum) {
+  return submitSession.feedbackByVideo[vNum] || null;
+}
+
+function setFeedback(vNum, feedback) {
+  if (feedback) {
+    submitSession.feedbackByVideo[vNum] = feedback;
+  } else {
+    delete submitSession.feedbackByVideo[vNum];
+  }
 }
 
 export function renderAdminSubmitView(container, navigate) {
@@ -119,10 +163,37 @@ export function renderAdminSubmitView(container, navigate) {
           .map((v) => {
             const isSelected = String(v.videoNumber) === String(selectedVideoNum);
             const statusLabel = v.status ? ' [Done]' : '';
-            return `<option value="${v.videoNumber}" ${isSelected ? 'selected' : ''}>Video ${v.videoNumber}${statusLabel}</option>`;
+            const activeUploadsForVid = store.getVideoUploads(selectedChannelId, v.videoNumber);
+            const isUploading = activeUploadsForVid.some((u) => u.status === 'uploading');
+            const uploadLabel = isUploading ? ' [⟳ Uploading]' : '';
+            return `<option value="${v.videoNumber}" ${isSelected ? 'selected' : ''}>Video ${v.videoNumber}${statusLabel}${uploadLabel}</option>`;
           })
           .join('')
       : '<option value="">No videos in this channel</option>';
+
+    // Global Active Uploads Bar
+    const allActiveUploads = store.getAllActiveUploads();
+    let globalUploadsBarHtml = '';
+    if (allActiveUploads.length > 0) {
+      globalUploadsBarHtml = `
+        <div class="active-uploads-bar">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div class="upload-spin-icon"></div>
+            <div>
+              <div style="font-weight: 700; font-size: 13px; color: var(--accent);">
+                ${allActiveUploads.length} Background Upload${allActiveUploads.length > 1 ? 's' : ''} Active
+              </div>
+              <div style="font-size: 11.5px; color: var(--text-primary); margin-top: 1px;">
+                ${allActiveUploads.map((u) => `Video <strong>#${u.videoNumber}</strong> (${escapeHtml(u.task)}: ${escapeHtml(u.fileName)})`).join(' • ')}
+              </div>
+            </div>
+          </div>
+          <div style="font-size: 11px; color: #10b981; font-weight: 600;">
+            ✓ Shift between videos freely anytime
+          </div>
+        </div>
+      `;
+    }
 
     // Auto-fetched title text
     const autoFetchedTitle = !currentChannel
@@ -202,6 +273,8 @@ export function renderAdminSubmitView(container, navigate) {
     const elementsGridHtml = allElements
       .map((el) => {
         const isActive = el.key === selectedElementKey;
+        const activeUploadForEl = store.getBackgroundUpload(selectedChannelId, selectedVideoNum, el.key);
+        const isElUploading = activeUploadForEl && activeUploadForEl.status === 'uploading';
         return `
           <button type="button" class="admin-element-card ${isActive ? 'active' : ''}" data-element-key="${el.key}">
             <div class="element-card-icon">${el.icon}</div>
@@ -210,11 +283,13 @@ export function renderAdminSubmitView(container, navigate) {
                 <span class="element-card-name">${escapeHtml(el.name)}</span>
                 <span class="element-card-type">${escapeHtml(el.typeLabel)}</span>
               </div>
-              <div class="element-card-summary">${escapeHtml(el.summary)}</div>
+              <div class="element-card-summary">${isElUploading ? 'Uploading in background...' : escapeHtml(el.summary)}</div>
             </div>
             <div class="element-card-status">
               ${
-                el.isSubmitted
+                isElUploading
+                  ? `<span class="badge-done" style="font-size: 10.5px; background: rgba(255, 122, 0, 0.15); color: var(--accent); border-color: var(--accent);">⟳ Uploading</span>`
+                  : el.isSubmitted
                   ? `<span class="badge-done" style="font-size: 10.5px;">✓ Submitted</span>`
                   : `<span class="badge-pending" style="font-size: 10.5px; opacity: 0.7;">Pending</span>`
               }
@@ -249,8 +324,10 @@ export function renderAdminSubmitView(container, navigate) {
         const existingName = hasExisting ? currentVideo.thumbnail.name : '';
         const existingUrl = currentVideo?.thumbnail?.url || '';
         const hasValidUrl = Boolean(existingUrl && existingUrl.startsWith('http'));
-        const stagedFile = submitSession.localFiles['thumbnail'];
-        const previewUrl = submitSession.previewUrls['thumbnail'];
+        const stagedFile = getStagedFile(selectedVideoNum, 'thumbnail');
+        const previewUrl = getPreviewUrl(selectedVideoNum, 'thumbnail');
+        const activeUpload = store.getBackgroundUpload(selectedChannelId, selectedVideoNum, 'thumbnail');
+        const isUploading = activeUpload && activeUpload.status === 'uploading';
 
         let existingBoxHtml = '';
         if (hasExisting) {
@@ -305,8 +382,24 @@ export function renderAdminSubmitView(container, navigate) {
                 <h3 style="margin-bottom: 2px;">Submit Thumbnail</h3>
                 <span class="helper-text">Channel: <strong>${escapeHtml(currentChannel.name)}</strong> • Video <strong>#${currentVideo.videoNumber}</strong></span>
               </div>
-              ${hasExisting ? '<span class="status-submitted">✓ In Database</span>' : '<span class="badge-pending">Pending</span>'}
+              ${isUploading ? '<span class="status-submitted" style="color: var(--accent);">⟳ Uploading...</span>' : hasExisting ? '<span class="status-submitted">✓ In Database</span>' : '<span class="badge-pending">Pending</span>'}
             </div>
+
+            ${
+              isUploading
+                ? `
+                  <div class="active-upload-status-card" style="margin-bottom: 14px; padding: 10px 14px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: var(--radius); display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <div class="upload-spin-icon"></div>
+                      <div>
+                        <div style="font-weight: 600; font-size: 13px; color: var(--accent);">Uploading Thumbnail in background: ${escapeHtml(activeUpload.fileName)}</div>
+                        <div class="helper-text" style="font-size: 11px;">You can shift between videos freely anytime.</div>
+                      </div>
+                    </div>
+                  </div>
+                `
+                : ''
+            }
 
             ${existingBoxHtml}
             ${renderPromptsBox('thumbnail', selectedChannelId)}
@@ -339,8 +432,10 @@ export function renderAdminSubmitView(container, navigate) {
         const existingName = hasExisting ? currentVideo.voiceover.name : '';
         const existingUrl = currentVideo?.voiceover?.url || '';
         const hasValidUrl = Boolean(existingUrl && existingUrl.startsWith('http'));
-        const stagedFile = submitSession.localFiles['voiceover'];
-        const previewUrl = submitSession.previewUrls['voiceover'];
+        const stagedFile = getStagedFile(selectedVideoNum, 'voiceover');
+        const previewUrl = getPreviewUrl(selectedVideoNum, 'voiceover');
+        const activeUpload = store.getBackgroundUpload(selectedChannelId, selectedVideoNum, 'voiceover');
+        const isUploading = activeUpload && activeUpload.status === 'uploading';
 
         let existingBoxHtml = '';
         if (hasExisting) {
@@ -389,8 +484,24 @@ export function renderAdminSubmitView(container, navigate) {
                 <h3 style="margin-bottom: 2px;">Submit Voiceover</h3>
                 <span class="helper-text">Channel: <strong>${escapeHtml(currentChannel.name)}</strong> • Video <strong>#${currentVideo.videoNumber}</strong></span>
               </div>
-              ${hasExisting ? '<span class="status-submitted">✓ In Database</span>' : '<span class="badge-pending">Pending</span>'}
+              ${isUploading ? '<span class="status-submitted" style="color: var(--accent);">⟳ Uploading...</span>' : hasExisting ? '<span class="status-submitted">✓ In Database</span>' : '<span class="badge-pending">Pending</span>'}
             </div>
+
+            ${
+              isUploading
+                ? `
+                  <div class="active-upload-status-card" style="margin-bottom: 14px; padding: 10px 14px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: var(--radius); display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <div class="upload-spin-icon"></div>
+                      <div>
+                        <div style="font-weight: 600; font-size: 13px; color: var(--accent);">Uploading Voiceover in background: ${escapeHtml(activeUpload.fileName)}</div>
+                        <div class="helper-text" style="font-size: 11px;">You can shift between videos freely anytime.</div>
+                      </div>
+                    </div>
+                  </div>
+                `
+                : ''
+            }
 
             ${existingBoxHtml}
             ${renderPromptsBox('voiceover', selectedChannelId)}
@@ -421,7 +532,7 @@ export function renderAdminSubmitView(container, navigate) {
       else if (activeElement.key === 'script') {
         const hasExisting = Boolean(currentVideo?.script && currentVideo.script.trim());
         const existingScript = hasExisting ? currentVideo.script : '';
-        const currentDraft = submitSession.drafts['script'] !== undefined ? submitSession.drafts['script'] : existingScript;
+        const currentDraft = getDraft(selectedVideoNum, 'script', existingScript);
 
         workspaceHtml = `
           <div class="card workspace-card">
@@ -468,7 +579,7 @@ export function renderAdminSubmitView(container, navigate) {
       else if (activeElement.key === 'meta') {
         const hasExisting = Boolean(currentVideo?.metaInfo && currentVideo.metaInfo.trim());
         const existingMeta = hasExisting ? currentVideo.metaInfo : '';
-        const currentDraft = submitSession.drafts['meta'] !== undefined ? submitSession.drafts['meta'] : existingMeta;
+        const currentDraft = getDraft(selectedVideoNum, 'meta', existingMeta);
 
         workspaceHtml = `
           <div class="card workspace-card">
@@ -511,11 +622,13 @@ export function renderAdminSubmitView(container, navigate) {
         const hasExisting = Boolean(currentVideo?.customFields?.[roleName]);
         const existingVal = hasExisting ? currentVideo.customFields[roleName] : '';
         const inputType = activeElement.inputType || 'Text';
+        const activeUpload = store.getBackgroundUpload(selectedChannelId, selectedVideoNum, activeElement.key);
+        const isUploading = activeUpload && activeUpload.status === 'uploading';
 
         let customInputHtml = '';
 
         if (inputType === 'Attach File') {
-          const stagedFile = submitSession.localFiles[activeElement.key];
+          const stagedFile = getStagedFile(selectedVideoNum, activeElement.key);
           const hasExistingFile = hasExisting && typeof existingVal === 'object' && existingVal?.name;
 
           customInputHtml = `
@@ -560,7 +673,7 @@ export function renderAdminSubmitView(container, navigate) {
             </div>
           `;
         } else if (inputType === 'Number') {
-          const currentDraft = submitSession.drafts[activeElement.key] !== undefined ? submitSession.drafts[activeElement.key] : existingVal;
+          const currentDraft = getDraft(selectedVideoNum, activeElement.key, existingVal);
           customInputHtml = `
             <div class="form-group" style="max-width: 320px;">
               <label for="admin-submit-custom-num">Enter number for ${escapeHtml(roleName)}:</label>
@@ -573,7 +686,7 @@ export function renderAdminSubmitView(container, navigate) {
             </div>
           `;
         } else {
-          const currentDraft = submitSession.drafts[activeElement.key] !== undefined ? submitSession.drafts[activeElement.key] : existingVal;
+          const currentDraft = getDraft(selectedVideoNum, activeElement.key, existingVal);
           customInputHtml = `
             <div class="form-group">
               <label for="admin-submit-custom-text">Enter text for ${escapeHtml(roleName)}:</label>
@@ -594,8 +707,24 @@ export function renderAdminSubmitView(container, navigate) {
                 <h3 style="margin-bottom: 2px;">Submit ${escapeHtml(roleName)}</h3>
                 <span class="helper-text">Channel: <strong>${escapeHtml(currentChannel.name)}</strong> • Video <strong>#${currentVideo.videoNumber}</strong></span>
               </div>
-              ${hasExisting ? '<span class="status-submitted">✓ In Database</span>' : '<span class="badge-pending">Pending</span>'}
+              ${isUploading ? '<span class="status-submitted" style="color: var(--accent);">⟳ Uploading...</span>' : hasExisting ? '<span class="status-submitted">✓ In Database</span>' : '<span class="badge-pending">Pending</span>'}
             </div>
+
+            ${
+              isUploading
+                ? `
+                  <div class="active-upload-status-card" style="margin-bottom: 14px; padding: 10px 14px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: var(--radius); display: flex; align-items: center; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <div class="upload-spin-icon"></div>
+                      <div>
+                        <div style="font-weight: 600; font-size: 13px; color: var(--accent);">Uploading ${escapeHtml(roleName)} in background: ${escapeHtml(activeUpload.fileName)}</div>
+                        <div class="helper-text" style="font-size: 11px;">You can shift between videos freely anytime.</div>
+                      </div>
+                    </div>
+                  </div>
+                `
+                : ''
+            }
 
             ${renderPromptsBox(roleName, selectedChannelId)}
             ${customInputHtml}
@@ -607,12 +736,14 @@ export function renderAdminSubmitView(container, navigate) {
     // Render Overall Layout
     container.innerHTML = `
       <div class="main-content">
+        ${globalUploadsBarHtml}
+
         <!-- Notification Feedback Banner -->
         ${
-          submitSession.feedback
+          getFeedback(selectedVideoNum)
             ? `
-              <div class="notification-banner ${submitSession.feedback.type === 'error' ? 'error' : ''}" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
-                <span>${escapeHtml(submitSession.feedback.text)}</span>
+              <div class="notification-banner ${getFeedback(selectedVideoNum).type === 'error' ? 'error' : ''}" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+                <span>${escapeHtml(getFeedback(selectedVideoNum).text)}</span>
                 <button type="button" id="btn-close-feedback" style="background: none; border: none; color: inherit; cursor: pointer; font-size: 14px; padding: 2px 6px;">✕</button>
               </div>
             `
@@ -693,7 +824,7 @@ export function renderAdminSubmitView(container, navigate) {
     const closeFeedbackBtn = container.querySelector('#btn-close-feedback');
     if (closeFeedbackBtn) {
       closeFeedbackBtn.addEventListener('click', () => {
-        submitSession.feedback = null;
+        setFeedback(selectedVideoNum, null);
         render();
       });
     }
@@ -734,8 +865,6 @@ export function renderAdminSubmitView(container, navigate) {
         localStorage.setItem('yta_admin_submit_channel_id', selectedChannelId);
         selectedVideoNum = '';
         sessionStorage.setItem('yta_admin_submit_video_num', '');
-        clearSessionFiles();
-        submitSession.feedback = null;
         render();
       });
     }
@@ -746,8 +875,6 @@ export function renderAdminSubmitView(container, navigate) {
       vidSelect.addEventListener('change', (e) => {
         selectedVideoNum = e.target.value;
         sessionStorage.setItem('yta_admin_submit_video_num', selectedVideoNum);
-        clearSessionFiles();
-        submitSession.feedback = null;
         render();
       });
     }
@@ -758,7 +885,6 @@ export function renderAdminSubmitView(container, navigate) {
         const key = btn.dataset.elementKey;
         selectedElementKey = key;
         sessionStorage.setItem('yta_admin_submit_element', selectedElementKey);
-        submitSession.feedback = null;
         render();
       });
     });
@@ -796,13 +922,7 @@ export function renderAdminSubmitView(container, navigate) {
     container.querySelectorAll('.btn-clear-staged').forEach((btn) => {
       btn.addEventListener('click', () => {
         const key = btn.dataset.key;
-        delete submitSession.localFiles[key];
-        if (submitSession.previewUrls[key]) {
-          try {
-            URL.revokeObjectURL(submitSession.previewUrls[key]);
-          } catch (e) {}
-          delete submitSession.previewUrls[key];
-        }
+        clearStagedFile(selectedVideoNum, key);
         render();
       });
     });
@@ -871,53 +991,34 @@ export function renderAdminSubmitView(container, navigate) {
     }
 
     function handleThumbFile(file) {
-      submitSession.localFiles['thumbnail'] = file;
-      if (submitSession.previewUrls['thumbnail']) {
-        try {
-          URL.revokeObjectURL(submitSession.previewUrls['thumbnail']);
-        } catch (e) {}
-      }
+      setStagedFile(selectedVideoNum, 'thumbnail', file);
       try {
-        submitSession.previewUrls['thumbnail'] = URL.createObjectURL(file);
+        setPreviewUrl(selectedVideoNum, 'thumbnail', URL.createObjectURL(file));
       } catch (e) {}
-      submitSession.feedback = null;
+      setFeedback(selectedVideoNum, null);
       render();
     }
 
     if (submitThumbBtn) {
-      submitThumbBtn.addEventListener('click', async () => {
-        const file = submitSession.localFiles['thumbnail'];
+      submitThumbBtn.addEventListener('click', () => {
+        const file = getStagedFile(selectedVideoNum, 'thumbnail');
         if (!file) return;
 
-        submitThumbBtn.disabled = true;
-        submitThumbBtn.textContent = 'Uploading & Saving...';
+        const vNum = selectedVideoNum;
+        const fName = file.name;
 
-        const res = await store.submitContent({
+        store.startBackgroundUpload({
           channelId: selectedChannelId,
-          videoNumber: selectedVideoNum,
+          videoNumber: vNum,
           task: 'Thumbnail',
           file: file
         });
 
-        submitThumbBtn.disabled = false;
-        if (res.success) {
-          delete submitSession.localFiles['thumbnail'];
-          if (submitSession.previewUrls['thumbnail']) {
-            try {
-              URL.revokeObjectURL(submitSession.previewUrls['thumbnail']);
-            } catch (e) {}
-            delete submitSession.previewUrls['thumbnail'];
-          }
-          submitSession.feedback = {
-            type: 'success',
-            text: `✓ Thumbnail "${file.name}" successfully saved for Video #${selectedVideoNum}!`
-          };
-        } else {
-          submitSession.feedback = {
-            type: 'error',
-            text: `Failed to save thumbnail: ${res.error || 'Unknown error'}`
-          };
-        }
+        clearStagedFile(vNum, 'thumbnail');
+        setFeedback(vNum, {
+          type: 'success',
+          text: `⟳ Thumbnail "${fName}" is uploading in the background. You can shift to other videos now!`
+        });
         render();
       });
     }
@@ -963,53 +1064,34 @@ export function renderAdminSubmitView(container, navigate) {
     }
 
     function handleVoFile(file) {
-      submitSession.localFiles['voiceover'] = file;
-      if (submitSession.previewUrls['voiceover']) {
-        try {
-          URL.revokeObjectURL(submitSession.previewUrls['voiceover']);
-        } catch (e) {}
-      }
+      setStagedFile(selectedVideoNum, 'voiceover', file);
       try {
-        submitSession.previewUrls['voiceover'] = URL.createObjectURL(file);
+        setPreviewUrl(selectedVideoNum, 'voiceover', URL.createObjectURL(file));
       } catch (e) {}
-      submitSession.feedback = null;
+      setFeedback(selectedVideoNum, null);
       render();
     }
 
     if (submitVoBtn) {
-      submitVoBtn.addEventListener('click', async () => {
-        const file = submitSession.localFiles['voiceover'];
+      submitVoBtn.addEventListener('click', () => {
+        const file = getStagedFile(selectedVideoNum, 'voiceover');
         if (!file) return;
 
-        submitVoBtn.disabled = true;
-        submitVoBtn.textContent = 'Uploading & Saving...';
+        const vNum = selectedVideoNum;
+        const fName = file.name;
 
-        const res = await store.submitContent({
+        store.startBackgroundUpload({
           channelId: selectedChannelId,
-          videoNumber: selectedVideoNum,
+          videoNumber: vNum,
           task: 'Voiceover',
           file: file
         });
 
-        submitVoBtn.disabled = false;
-        if (res.success) {
-          delete submitSession.localFiles['voiceover'];
-          if (submitSession.previewUrls['voiceover']) {
-            try {
-              URL.revokeObjectURL(submitSession.previewUrls['voiceover']);
-            } catch (e) {}
-            delete submitSession.previewUrls['voiceover'];
-          }
-          submitSession.feedback = {
-            type: 'success',
-            text: `✓ Voiceover "${file.name}" successfully saved for Video #${selectedVideoNum}!`
-          };
-        } else {
-          submitSession.feedback = {
-            type: 'error',
-            text: `Failed to save voiceover: ${res.error || 'Unknown error'}`
-          };
-        }
+        clearStagedFile(vNum, 'voiceover');
+        setFeedback(vNum, {
+          type: 'success',
+          text: `⟳ Voiceover "${fName}" is uploading in the background. You can shift to other videos now!`
+        });
         render();
       });
     }
@@ -1024,7 +1106,7 @@ export function renderAdminSubmitView(container, navigate) {
     if (scriptTextarea) {
       scriptTextarea.addEventListener('input', (e) => {
         const val = e.target.value;
-        submitSession.drafts['script'] = val;
+        setDraft(selectedVideoNum, 'script', val);
         if (scriptCounter) {
           scriptCounter.textContent = `${val.length} characters • ${val.trim() ? val.trim().split(/\s+/).length : 0} words`;
         }
@@ -1037,7 +1119,7 @@ export function renderAdminSubmitView(container, navigate) {
           const text = await navigator.clipboard.readText();
           if (text) {
             scriptTextarea.value = text;
-            submitSession.drafts['script'] = text;
+            setDraft(selectedVideoNum, 'script', text);
             if (scriptCounter) {
               scriptCounter.textContent = `${text.length} characters • ${text.trim().split(/\s+/).length} words`;
             }
@@ -1051,7 +1133,7 @@ export function renderAdminSubmitView(container, navigate) {
     if (clearScriptBtn && scriptTextarea) {
       clearScriptBtn.addEventListener('click', () => {
         scriptTextarea.value = '';
-        submitSession.drafts['script'] = '';
+        setDraft(selectedVideoNum, 'script', '');
         if (scriptCounter) {
           scriptCounter.textContent = '0 characters • 0 words';
         }
@@ -1060,12 +1142,12 @@ export function renderAdminSubmitView(container, navigate) {
 
     if (submitScriptBtn) {
       submitScriptBtn.addEventListener('click', async () => {
-        const textVal = (scriptTextarea?.value || submitSession.drafts['script'] || '').trim();
+        const textVal = (scriptTextarea?.value || getDraft(selectedVideoNum, 'script') || '').trim();
         if (!textVal) {
-          submitSession.feedback = {
+          setFeedback(selectedVideoNum, {
             type: 'error',
             text: 'Please enter script content before submitting.'
-          };
+          });
           render();
           return;
         }
@@ -1082,16 +1164,16 @@ export function renderAdminSubmitView(container, navigate) {
 
         submitScriptBtn.disabled = false;
         if (res.success) {
-          delete submitSession.drafts['script'];
-          submitSession.feedback = {
+          setDraft(selectedVideoNum, 'script', '');
+          setFeedback(selectedVideoNum, {
             type: 'success',
             text: `✓ Script successfully saved for Video #${selectedVideoNum}!`
-          };
+          });
         } else {
-          submitSession.feedback = {
+          setFeedback(selectedVideoNum, {
             type: 'error',
             text: `Failed to save script: ${res.error || 'Unknown error'}`
-          };
+          });
         }
         render();
       });
@@ -1105,7 +1187,7 @@ export function renderAdminSubmitView(container, navigate) {
 
     if (metaTextarea) {
       metaTextarea.addEventListener('input', (e) => {
-        submitSession.drafts['meta'] = e.target.value;
+        setDraft(selectedVideoNum, 'meta', e.target.value);
       });
     }
 
@@ -1115,7 +1197,7 @@ export function renderAdminSubmitView(container, navigate) {
           const text = await navigator.clipboard.readText();
           if (text) {
             metaTextarea.value = text;
-            submitSession.drafts['meta'] = text;
+            setDraft(selectedVideoNum, 'meta', text);
           }
         } catch (err) {
           console.warn('Clipboard read failed:', err);
@@ -1126,18 +1208,18 @@ export function renderAdminSubmitView(container, navigate) {
     if (clearMetaBtn && metaTextarea) {
       clearMetaBtn.addEventListener('click', () => {
         metaTextarea.value = '';
-        submitSession.drafts['meta'] = '';
+        setDraft(selectedVideoNum, 'meta', '');
       });
     }
 
     if (submitMetaBtn) {
       submitMetaBtn.addEventListener('click', async () => {
-        const textVal = (metaTextarea?.value || submitSession.drafts['meta'] || '').trim();
+        const textVal = (metaTextarea?.value || getDraft(selectedVideoNum, 'meta') || '').trim();
         if (!textVal) {
-          submitSession.feedback = {
+          setFeedback(selectedVideoNum, {
             type: 'error',
             text: 'Please enter Meta Information (description & tags) before submitting.'
-          };
+          });
           render();
           return;
         }
@@ -1154,16 +1236,16 @@ export function renderAdminSubmitView(container, navigate) {
 
         submitMetaBtn.disabled = false;
         if (res.success) {
-          delete submitSession.drafts['meta'];
-          submitSession.feedback = {
+          setDraft(selectedVideoNum, 'meta', '');
+          setFeedback(selectedVideoNum, {
             type: 'success',
             text: `✓ Meta Information successfully saved for Video #${selectedVideoNum}!`
-          };
+          });
         } else {
-          submitSession.feedback = {
+          setFeedback(selectedVideoNum, {
             type: 'error',
             text: `Failed to save meta info: ${res.error || 'Unknown error'}`
-          };
+          });
         }
         render();
       });
@@ -1186,42 +1268,41 @@ export function renderAdminSubmitView(container, navigate) {
       customDropzone.addEventListener('click', () => customFileInput.click());
       customFileInput.addEventListener('change', (e) => {
         if (e.target.files?.[0]) {
-          submitSession.localFiles[activeElement.key] = e.target.files[0];
+          setStagedFile(selectedVideoNum, activeElement.key, e.target.files[0]);
           render();
         }
       });
     }
 
     if (submitCustomFileBtn) {
-      submitCustomFileBtn.addEventListener('click', async () => {
+      submitCustomFileBtn.addEventListener('click', () => {
         const role = submitCustomFileBtn.dataset.role;
-        const file = submitSession.localFiles[activeElement.key];
+        const file = getStagedFile(selectedVideoNum, activeElement.key);
         if (!file) return;
 
-        submitCustomFileBtn.disabled = true;
-        submitCustomFileBtn.textContent = 'Uploading...';
+        const vNum = selectedVideoNum;
+        const fName = file.name;
 
-        const res = await store.submitContent({
+        store.startBackgroundUpload({
           channelId: selectedChannelId,
-          videoNumber: selectedVideoNum,
+          videoNumber: vNum,
           task: role,
           file: file
         });
 
-        submitCustomFileBtn.disabled = false;
-        if (res.success) {
-          delete submitSession.localFiles[activeElement.key];
-          submitSession.feedback = {
-            type: 'success',
-            text: `✓ ${role} file successfully saved for Video #${selectedVideoNum}!`
-          };
-        } else {
-          submitSession.feedback = {
-            type: 'error',
-            text: `Failed to save ${role}: ${res.error || 'Unknown error'}`
-          };
-        }
+        clearStagedFile(vNum, activeElement.key);
+        setFeedback(vNum, {
+          type: 'success',
+          text: `⟳ "${fName}" for ${role} is uploading in the background!`
+        });
         render();
+      });
+    }
+
+    const customNumInput = container.querySelector('#admin-submit-custom-num');
+    if (customNumInput) {
+      customNumInput.addEventListener('input', (e) => {
+        setDraft(selectedVideoNum, activeElement.key, e.target.value);
       });
     }
 
@@ -1244,17 +1325,25 @@ export function renderAdminSubmitView(container, navigate) {
 
         submitCustomNumBtn.disabled = false;
         if (res.success) {
-          submitSession.feedback = {
+          setDraft(selectedVideoNum, activeElement.key, '');
+          setFeedback(selectedVideoNum, {
             type: 'success',
             text: `✓ ${role} successfully saved for Video #${selectedVideoNum}!`
-          };
+          });
         } else {
-          submitSession.feedback = {
+          setFeedback(selectedVideoNum, {
             type: 'error',
             text: `Failed to save ${role}: ${res.error || 'Unknown error'}`
-          };
+          });
         }
         render();
+      });
+    }
+
+    const customTextInput = container.querySelector('#admin-submit-custom-text');
+    if (customTextInput) {
+      customTextInput.addEventListener('input', (e) => {
+        setDraft(selectedVideoNum, activeElement.key, e.target.value);
       });
     }
 
@@ -1277,15 +1366,16 @@ export function renderAdminSubmitView(container, navigate) {
 
         submitCustomTextBtn.disabled = false;
         if (res.success) {
-          submitSession.feedback = {
+          setDraft(selectedVideoNum, activeElement.key, '');
+          setFeedback(selectedVideoNum, {
             type: 'success',
             text: `✓ ${role} successfully saved for Video #${selectedVideoNum}!`
-          };
+          });
         } else {
-          submitSession.feedback = {
+          setFeedback(selectedVideoNum, {
             type: 'error',
             text: `Failed to save ${role}: ${res.error || 'Unknown error'}`
-          };
+          });
         }
         render();
       });

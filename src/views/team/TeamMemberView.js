@@ -27,33 +27,66 @@ function getSubmissionStatusCode(roleName) {
   return '';
 }
 
-// Session-level persistent state for team member view across renders & store updates
+// Session-level persistent state for team member view across renders & store updates (scoped per-video)
 const teamSession = {
-  localFiles: {},
-  submissionStatus: {},
-  taskFeedback: {},
-  inProgressDrafts: {},
-  thumbPreviewUrl: null,
-  voPreviewUrl: null
+  filesByVideo: {}, // { [videoNum]: { thumbnail: File, voiceover: File, ... } }
+  draftsByVideo: {}, // { [videoNum]: { script: '...', meta: '...', ... } }
+  feedbackByVideo: {}, // { [videoNum]: { thumbnail: '...', voiceover: '...' } }
+  previewUrlsByVideo: {}, // { [videoNum]: { thumbnail: url, voiceover: url } }
+  statusByVideo: {}
 };
 
-function clearTeamSession() {
-  if (teamSession.thumbPreviewUrl) {
-    try {
-      URL.revokeObjectURL(teamSession.thumbPreviewUrl);
-    } catch (e) {}
-    teamSession.thumbPreviewUrl = null;
+function getStagedFile(vNum, key) {
+  return teamSession.filesByVideo[vNum]?.[key] || null;
+}
+
+function setStagedFile(vNum, key, file) {
+  if (!teamSession.filesByVideo[vNum]) teamSession.filesByVideo[vNum] = {};
+  teamSession.filesByVideo[vNum][key] = file;
+}
+
+function clearStagedFile(vNum, key) {
+  if (teamSession.filesByVideo[vNum]) {
+    delete teamSession.filesByVideo[vNum][key];
   }
-  if (teamSession.voPreviewUrl) {
+  if (teamSession.previewUrlsByVideo[vNum]?.[key]) {
     try {
-      URL.revokeObjectURL(teamSession.voPreviewUrl);
+      URL.revokeObjectURL(teamSession.previewUrlsByVideo[vNum][key]);
     } catch (e) {}
-    teamSession.voPreviewUrl = null;
+    delete teamSession.previewUrlsByVideo[vNum][key];
   }
-  Object.keys(teamSession.localFiles).forEach((k) => delete teamSession.localFiles[k]);
-  Object.keys(teamSession.submissionStatus).forEach((k) => delete teamSession.submissionStatus[k]);
-  Object.keys(teamSession.taskFeedback).forEach((k) => delete teamSession.taskFeedback[k]);
-  Object.keys(teamSession.inProgressDrafts).forEach((k) => delete teamSession.inProgressDrafts[k]);
+}
+
+function getPreviewUrl(vNum, key) {
+  return teamSession.previewUrlsByVideo[vNum]?.[key] || null;
+}
+
+function setPreviewUrl(vNum, key, url) {
+  if (!teamSession.previewUrlsByVideo[vNum]) teamSession.previewUrlsByVideo[vNum] = {};
+  if (teamSession.previewUrlsByVideo[vNum][key]) {
+    try {
+      URL.revokeObjectURL(teamSession.previewUrlsByVideo[vNum][key]);
+    } catch (e) {}
+  }
+  teamSession.previewUrlsByVideo[vNum][key] = url;
+}
+
+function getDraft(vNum, key) {
+  return teamSession.draftsByVideo[vNum]?.[key];
+}
+
+function setDraft(vNum, key, val) {
+  if (!teamSession.draftsByVideo[vNum]) teamSession.draftsByVideo[vNum] = {};
+  teamSession.draftsByVideo[vNum][key] = val;
+}
+
+function getFeedback(vNum, key) {
+  return teamSession.feedbackByVideo[vNum]?.[key] || null;
+}
+
+function setFeedback(vNum, key, msg) {
+  if (!teamSession.feedbackByVideo[vNum]) teamSession.feedbackByVideo[vNum] = {};
+  teamSession.feedbackByVideo[vNum][key] = msg;
 }
 
 export function renderTeamMemberView(container, navigate) {
@@ -70,7 +103,7 @@ export function renderTeamMemberView(container, navigate) {
       return `
         <div class="prompts-container" style="padding: 8px 12px; margin-bottom: 10px; border: 1px dashed var(--border); border-radius: var(--radius); background: rgba(255,255,255,0.01);">
           <div style="font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
-            <span>No ${roleName} prompts configured for ${channelLabel} yet.</span>
+            <span>No ${escapeHtml(roleName)} prompts configured for ${escapeHtml(channelLabel)} yet.</span>
           </div>
         </div>
       `;
@@ -82,14 +115,14 @@ export function renderTeamMemberView(container, navigate) {
         <div class="prompt-box-item" style="padding: 8px 10px; background-color: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px;">
           <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-weight: 600; font-size: 12px; color: var(--text-primary);">${p.label}</span>
+              <span style="font-weight: 600; font-size: 12px; color: var(--text-primary);">${escapeHtml(p.label)}</span>
               <button type="button" class="btn-prompt-toggle" data-prompt-id="${p.id}">Expand</button>
             </div>
             <button type="button" class="btn btn-secondary btn-sm btn-copy-prompt" data-prompt-text="${encodeURIComponent(p.promptText)}">
               Copy Prompt
             </button>
           </div>
-          <div class="prompt-scrollable-content" id="prompt-body-${p.id}">${p.promptText}</div>
+          <div class="prompt-scrollable-content" id="prompt-body-${p.id}">${escapeHtml(p.promptText)}</div>
         </div>
       `
       )
@@ -98,7 +131,7 @@ export function renderTeamMemberView(container, navigate) {
     return `
       <div class="prompts-container" style="max-height: 220px; overflow-y: auto;">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-          <span class="section-label" style="margin-bottom: 0;">Prompts for ${channelLabel}:</span>
+          <span class="section-label" style="margin-bottom: 0;">Prompts for ${escapeHtml(channelLabel)}:</span>
         </div>
         ${itemsHtml}
       </div>
@@ -143,7 +176,7 @@ export function renderTeamMemberView(container, navigate) {
       ? (currentVideo.title || '— (No Title Found)')
       : '— (Video Not Found)';
 
-    // Channel dropdown options (Team members only see Channel 1 - EM)
+    // Channel dropdown options
     const channelOptions = [
       `<option value="" ${!selectedChannelId ? 'selected' : ''}>-- Select Channel --</option>`,
       ...channels.map((c) => `<option value="${c.id}" ${c.id === selectedChannelId ? 'selected' : ''}>${escapeHtml(getChannelMemberDisplayName(c, channels))}</option>`)
@@ -162,9 +195,25 @@ export function renderTeamMemberView(container, navigate) {
     });
 
     const videoStatusLabels = { T: 'Thumbnail', D: 'Description', V: 'Voiceover', S: 'Script' };
-    const videoStatusBoxes = (video) => [...(submissionStatusCodes.get(video.id) || [])]
-      .map((code) => `<span class="video-status-box video-status-${code.toLowerCase()}" title="${videoStatusLabels[code]} submitted" aria-hidden="true">${code}</span>`)
-      .join('');
+
+    const videoStatusBoxes = (video) => {
+      const activeUploadsForVid = store.getVideoUploads(selectedChannelId, video.videoNumber);
+      const uploadingTasks = activeUploadsForVid.filter((u) => u.status === 'uploading').map((u) => u.normTask);
+
+      const codes = [...(submissionStatusCodes.get(video.id) || [])];
+      let html = codes
+        .map((code) => `<span class="video-status-box video-status-${code.toLowerCase()}" title="${videoStatusLabels[code]} submitted" aria-hidden="true">${code}</span>`)
+        .join('');
+
+      if (uploadingTasks.some((t) => t.includes('voice')) && !codes.includes('V')) {
+        html += `<span class="video-status-box video-status-uploading" title="Voiceover uploading in background..." aria-hidden="true">⟳ V</span>`;
+      }
+      if (uploadingTasks.some((t) => t.includes('thumb')) && !codes.includes('T')) {
+        html += `<span class="video-status-box video-status-uploading" title="Thumbnail uploading in background..." aria-hidden="true">⟳ T</span>`;
+      }
+      return html;
+    };
+
     const selectedVideo = channelVideos.find((video) => String(video.videoNumber) === String(selectedVideoNum));
     const videoPickerOptions = channelVideos.length
       ? channelVideos.map((video) => {
@@ -173,44 +222,51 @@ export function renderTeamMemberView(container, navigate) {
             .map((code) => `${videoStatusLabels[code]} submitted`);
           const statusDescription = submittedStatuses.length ? `. ${submittedStatuses.join(', ')}` : '';
           const doneLabel = video.status ? ', marked as done' : '';
+
+          const activeUploadsForVid = store.getVideoUploads(selectedChannelId, video.videoNumber);
+          const hasActiveUploads = activeUploadsForVid.some((u) => u.status === 'uploading');
+          const uploadingBadge = hasActiveUploads
+            ? `<span class="badge-done" style="background: rgba(255, 122, 0, 0.15); color: var(--accent); border-color: var(--accent); margin-left: 6px; font-size: 10px;">⟳ Uploading</span>`
+            : '';
+
           return `
             <button type="button" class="video-picker-option${selected ? ' selected' : ''}"
               aria-pressed="${selected}" aria-label="Video ${video.videoNumber}${doneLabel}${statusDescription}"
               data-video-number="${video.videoNumber}">
-              <span>Video ${video.videoNumber}${video.status ? '<span class="video-done-label">Done</span>' : ''}</span>
+              <span>Video ${video.videoNumber}${video.status ? '<span class="video-done-label">Done</span>' : ''}${uploadingBadge}</span>
               <span class="video-status-boxes">${videoStatusBoxes(video)}</span>
             </button>
           `;
         }).join('')
       : '<p class="video-picker-empty">No videos available for this channel yet.</p>';
+
     const videoPickerLabel = selectedVideo
       ? `Video ${selectedVideo.videoNumber}`
       : channelVideos.length ? 'Select Video #' : 'No videos available';
 
-    // User notifications
-    const myNotifications = (state.notifications || []).filter(
-      (n) => n.targetUsername === user.username
-    );
-
-    // Shared ledger entries (Masked for team member privacy)
-    const ledgerEntries = (state.ledger || []).slice(0, 8);
-    const ledgerHtml = ledgerEntries
-      .map((e) => `
-        <div class="ledger-item">
-          <div class="ledger-item-header">
+    // Global Active Uploads Bar
+    const allActiveUploads = store.getAllActiveUploads();
+    let globalUploadsBarHtml = '';
+    if (allActiveUploads.length > 0) {
+      globalUploadsBarHtml = `
+        <div class="active-uploads-bar">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div class="upload-spin-icon"></div>
             <div>
-              <span class="ledger-actor">${e.actor}</span>
-              <span class="ledger-desc"> ${escapeHtml(maskTextForMember(e.action, channels))}</span>
+              <div style="font-weight: 700; font-size: 13px; color: var(--accent);">
+                ${allActiveUploads.length} Background Upload${allActiveUploads.length > 1 ? 's' : ''} Active
+              </div>
+              <div style="font-size: 11.5px; color: var(--text-primary); margin-top: 1px;">
+                ${allActiveUploads.map((u) => `Video <strong>#${u.videoNumber}</strong> (${escapeHtml(u.task)}: ${escapeHtml(u.fileName)})`).join(' • ')}
+              </div>
             </div>
-            <span class="ledger-time">${e.timestamp}</span>
           </div>
-          <div style="font-size: 11px; color: var(--text-muted);">
-            Channel: ${escapeHtml(maskTextForMember(e.channel, channels))} ${e.videoNumber ? `• Video ${e.videoNumber}` : ''} • Task: ${e.task}
+          <div style="font-size: 11px; color: #10b981; font-weight: 600;">
+            ✓ Shift between videos freely anytime
           </div>
-          ${e.fileReference ? `<div class="ledger-ref">${e.fileReference}</div>` : ''}
         </div>
-      `)
-      .join('');
+      `;
+    }
 
     // Role detection
     const hasThumbnailRole = assignedRoles.some((r) => r.toLowerCase() === 'thumbnail');
@@ -248,15 +304,15 @@ export function renderTeamMemberView(container, navigate) {
                   <div class="prompt-box-item" style="padding: 8px 10px; background-color: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 8px;">
                     <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px;">
                       <div style="display: flex; align-items: center; gap: 8px;">
-                        <span class="sidebar-tag" style="color: var(--text-primary); border-color: var(--text-primary); font-size: 10px;">${p.roleName}</span>
-                        <span style="font-weight: 600; font-size: 12px; color: var(--text-primary);">${p.label}</span>
+                        <span class="sidebar-tag" style="color: var(--text-primary); border-color: var(--text-primary); font-size: 10px;">${escapeHtml(p.roleName)}</span>
+                        <span style="font-weight: 600; font-size: 12px; color: var(--text-primary);">${escapeHtml(p.label)}</span>
                         <button type="button" class="btn-prompt-toggle" data-prompt-id="${p.id}">Expand</button>
                       </div>
                       <button type="button" class="btn btn-secondary btn-sm btn-copy-prompt" data-prompt-text="${encodeURIComponent(p.promptText)}">
                         Copy Prompt
                       </button>
                     </div>
-                    <div class="prompt-scrollable-content" id="prompt-body-${p.id}">${p.promptText}</div>
+                    <div class="prompt-scrollable-content" id="prompt-body-${p.id}">${escapeHtml(p.promptText)}</div>
                   </div>
                 `).join('')}
               </div>
@@ -289,23 +345,47 @@ export function renderTeamMemberView(container, navigate) {
       if (hasThumbnailRole || hasMetaRole) {
         let thumbHtml = '';
         if (hasThumbnailRole) {
+          const activeThumbUpload = store.getBackgroundUpload(selectedChannelId, selectedVideoNum, 'thumbnail');
+          const isThumbUploading = activeThumbUpload && activeThumbUpload.status === 'uploading';
+
           const hasExistingThumb = Boolean(currentVideo?.thumbnail && currentVideo.thumbnail.name);
           const existingThumbName = hasExistingThumb ? currentVideo.thumbnail.name : '';
-          const selectedThumbFile = teamSession.localFiles['thumbnail'];
-          const isThumbSubmitted = teamSession.submissionStatus['thumbnail'] || hasExistingThumb;
+          const selectedThumbFile = getStagedFile(selectedVideoNum, 'thumbnail');
+          const thumbPreviewUrl = getPreviewUrl(selectedVideoNum, 'thumbnail');
+          const isThumbSubmitted = hasExistingThumb;
 
-          const thumbFeedbackBanner = teamSession.taskFeedback['thumbnail']
-            ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${teamSession.taskFeedback['thumbnail']}</div>`
+          const thumbFeedback = getFeedback(selectedVideoNum, 'thumbnail');
+          const thumbFeedbackBanner = thumbFeedback
+            ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${escapeHtml(thumbFeedback)}</div>`
             : '';
 
-          // Mini Thumbnail Preview Box (compact and responsive for mobile)
+          // Mini Thumbnail Preview Box
           let thumbPreviewHtml = '';
-          if (selectedThumbFile && teamSession.thumbPreviewUrl) {
+          if (isThumbUploading) {
+            thumbPreviewHtml = `
+              <div class="active-upload-status-card">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <div class="upload-spin-icon"></div>
+                    <div>
+                      <div style="font-weight: 600; font-size: 13px; color: var(--accent);">
+                        Thumbnail "${escapeHtml(activeThumbUpload.fileName)}" Uploading in Background...
+                      </div>
+                      <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                        ✓ You can shift to other videos anytime! This upload will continue in the background.
+                      </div>
+                    </div>
+                  </div>
+                  <span class="badge-pending" style="background: rgba(255, 122, 0, 0.15); color: var(--accent); border-color: var(--accent);">In Progress</span>
+                </div>
+              </div>
+            `;
+          } else if (selectedThumbFile && thumbPreviewUrl) {
             thumbPreviewHtml = `
               <div class="thumb-mini-preview">
-                <img src="${teamSession.thumbPreviewUrl}" alt="Attached preview" />
+                <img src="${thumbPreviewUrl}" alt="Attached preview" />
                 <div style="flex: 1; min-width: 0;">
-                  <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${selectedThumbFile.name}</div>
+                  <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(selectedThumbFile.name)}</div>
                   <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Attached preview (${Math.round(selectedThumbFile.size / 1024)} KB)</div>
                 </div>
               </div>
@@ -318,7 +398,7 @@ export function renderTeamMemberView(container, navigate) {
                   : '<div style="width: 110px; height: 62px; display: flex; align-items: center; justify-content: center; background: #141416; border: 1px solid var(--border); border-radius: 4px; font-size: 11px; color: var(--text-muted);">No Preview</div>'
                 }
                 <div style="flex: 1; min-width: 0;">
-                  <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${existingThumbName}</div>
+                  <div style="font-size: 12px; font-weight: 600; color: var(--text-primary); text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">${escapeHtml(existingThumbName)}</div>
                   <div style="font-size: 11px; color: #10b981; margin-top: 2px;">✓ Thumbnail in database</div>
                 </div>
               </div>
@@ -341,13 +421,17 @@ export function renderTeamMemberView(container, navigate) {
 
               <div class="file-actions" style="margin-top: 10px;">
                 <input type="file" id="input-thumb-file" accept="image/*" style="display: none;" />
-                <button type="button" id="btn-attach-thumb" class="btn btn-secondary btn-sm">${hasExistingThumb ? 'Change Image' : 'Attach Image'}</button>
-                ${selectedThumbFile ? `
+                <button type="button" id="btn-attach-thumb" class="btn btn-secondary btn-sm" ${isThumbUploading ? 'disabled' : ''}>${hasExistingThumb ? 'Change Image' : 'Attach Image'}</button>
+                ${selectedThumbFile && !isThumbUploading ? `
                   <button type="button" id="btn-remove-thumb" class="btn btn-danger btn-sm">Clear Selection</button>
                 ` : ''}
-                <button type="button" id="btn-submit-thumb" class="btn btn-primary btn-sm" ${!selectedThumbFile ? 'disabled' : ''}>
-                  ${hasExistingThumb ? 'Replace & Submit Image' : 'Submit Image'}
-                </button>
+                ${
+                  isThumbUploading
+                    ? `<button type="button" class="btn btn-secondary btn-sm" disabled>⟳ Uploading in Background...</button>`
+                    : `<button type="button" id="btn-submit-thumb" class="btn btn-primary btn-sm" ${!selectedThumbFile ? 'disabled' : ''}>
+                        ${hasExistingThumb ? 'Replace & Submit Image' : 'Submit Image'}
+                      </button>`
+                }
                 ${isThumbSubmitted ? '<span class="status-submitted" style="margin-left: auto;">Submitted to Database</span>' : ''}
               </div>
 
@@ -359,14 +443,15 @@ export function renderTeamMemberView(container, navigate) {
         let metaHtml = '';
         if (hasMetaRole) {
           const hasExistingMeta = Boolean(currentVideo?.metaInfo && currentVideo.metaInfo.trim());
-          const isMetaSubmitted = teamSession.submissionStatus['meta'] || hasExistingMeta;
+          const isMetaSubmitted = hasExistingMeta;
 
-          const metaFeedbackBanner = teamSession.taskFeedback['meta']
-            ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${teamSession.taskFeedback['meta']}</div>`
+          const metaFeedback = getFeedback(selectedVideoNum, 'meta');
+          const metaFeedbackBanner = metaFeedback
+            ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${escapeHtml(metaFeedback)}</div>`
             : '';
 
-          const metaTextValue = teamSession.inProgressDrafts['meta'] !== undefined
-            ? teamSession.inProgressDrafts['meta']
+          const metaTextValue = getDraft(selectedVideoNum, 'meta') !== undefined
+            ? getDraft(selectedVideoNum, 'meta')
             : (currentVideo?.metaInfo || '');
 
           metaHtml = `
@@ -383,7 +468,7 @@ export function renderTeamMemberView(container, navigate) {
               <!-- Role Prompts -->
               ${renderPromptsBox('Meta Info')}
 
-              <textarea id="input-meta-info" rows="4" placeholder="Paste description and tags here...">${metaTextValue}</textarea>
+              <textarea id="input-meta-info" rows="4" placeholder="Paste description and tags here...">${escapeHtml(metaTextValue)}</textarea>
               <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
                 <button type="button" id="btn-submit-meta" class="btn btn-primary btn-sm">
                   ${hasExistingMeta ? 'Replace & Submit Meta Info' : 'Submit Meta Information'}
@@ -408,14 +493,15 @@ export function renderTeamMemberView(container, navigate) {
         let scriptHtml = '';
         if (hasScriptRole) {
           const hasExistingScript = Boolean(currentVideo?.script && currentVideo.script.trim());
-          const isScriptSubmitted = teamSession.submissionStatus['script'] || hasExistingScript;
+          const isScriptSubmitted = hasExistingScript;
 
-          const scriptFeedbackBanner = teamSession.taskFeedback['script']
-            ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${teamSession.taskFeedback['script']}</div>`
+          const scriptFeedback = getFeedback(selectedVideoNum, 'script');
+          const scriptFeedbackBanner = scriptFeedback
+            ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${escapeHtml(scriptFeedback)}</div>`
             : '';
 
-          const scriptTextValue = teamSession.inProgressDrafts['script'] !== undefined
-            ? teamSession.inProgressDrafts['script']
+          const scriptTextValue = getDraft(selectedVideoNum, 'script') !== undefined
+            ? getDraft(selectedVideoNum, 'script')
             : (currentVideo?.script || '');
 
           scriptHtml = `
@@ -432,7 +518,7 @@ export function renderTeamMemberView(container, navigate) {
               <!-- Role Prompts -->
               ${renderPromptsBox('Script')}
 
-              <textarea id="input-script-text" rows="5" placeholder="Type or paste your script here...">${scriptTextValue}</textarea>
+              <textarea id="input-script-text" rows="5" placeholder="Type or paste your script here...">${escapeHtml(scriptTextValue)}</textarea>
               <div style="margin-top: 10px; display: flex; align-items: center; gap: 10px;">
                 <button type="button" id="btn-submit-script" class="btn btn-primary btn-sm">
                   ${hasExistingScript ? 'Replace & Submit Script' : 'Submit Script'}
@@ -445,18 +531,42 @@ export function renderTeamMemberView(container, navigate) {
 
         let voHtml = '';
         if (hasVoiceoverRole) {
+          const activeVoUpload = store.getBackgroundUpload(selectedChannelId, selectedVideoNum, 'voiceover');
+          const isVoUploading = activeVoUpload && activeVoUpload.status === 'uploading';
+
           const hasExistingVo = Boolean(currentVideo?.voiceover && currentVideo.voiceover.name);
           const existingVoName = hasExistingVo ? currentVideo.voiceover.name : '';
-          const selectedVoFile = teamSession.localFiles['voiceover'];
-          const isVoSubmitted = teamSession.submissionStatus['voiceover'] || hasExistingVo;
+          const selectedVoFile = getStagedFile(selectedVideoNum, 'voiceover');
+          const voPreviewUrl = getPreviewUrl(selectedVideoNum, 'voiceover');
+          const isVoSubmitted = hasExistingVo;
 
-          const voFeedbackBanner = teamSession.taskFeedback['voiceover']
-            ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${teamSession.taskFeedback['voiceover']}</div>`
+          const voFeedback = getFeedback(selectedVideoNum, 'voiceover');
+          const voFeedbackBanner = voFeedback
+            ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${escapeHtml(voFeedback)}</div>`
             : '';
 
-          // Audio file in-browser player & download
+          // Audio file in-browser player & upload indicator
           let voPreviewHtml = '';
-          if (selectedVoFile && teamSession.voPreviewUrl) {
+          if (isVoUploading) {
+            voPreviewHtml = `
+              <div class="active-upload-status-card">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <div class="upload-spin-icon"></div>
+                    <div>
+                      <div style="font-weight: 600; font-size: 13px; color: var(--accent);">
+                        Voiceover "${escapeHtml(activeVoUpload.fileName)}" Uploading in Background...
+                      </div>
+                      <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                        ✓ You can shift to other videos anytime! This upload will continue in the background.
+                      </div>
+                    </div>
+                  </div>
+                  <span class="badge-pending" style="background: rgba(255, 122, 0, 0.15); color: var(--accent); border-color: var(--accent);">In Progress</span>
+                </div>
+              </div>
+            `;
+          } else if (selectedVoFile && voPreviewUrl) {
             voPreviewHtml = `
               <div class="audio-player-container">
                 <div class="audio-meta">
@@ -465,7 +575,7 @@ export function renderTeamMemberView(container, navigate) {
                     <div style="font-size: 11px; color: var(--text-muted); margin-top: 1px;">Ready to submit (${Math.round(selectedVoFile.size / 1024)} KB) • Play below to review in browser</div>
                   </div>
                 </div>
-                <audio controls src="${teamSession.voPreviewUrl}" preload="metadata" style="width: 100%; height: 36px;"></audio>
+                <audio controls src="${voPreviewUrl}" preload="metadata" style="width: 100%; height: 36px;"></audio>
               </div>
             `;
           } else if (hasExistingVo) {
@@ -505,14 +615,18 @@ export function renderTeamMemberView(container, navigate) {
               ${renderPromptsBox('voiceover')}
 
               <div class="file-actions" style="margin-top: 10px;">
-                <input type="file" id="input-vo-file" accept="audio/*" style="display: none;" />
-                <button type="button" id="btn-upload-vo" class="btn btn-secondary btn-sm">${hasExistingVo ? 'Change Audio File' : 'Attach Voiceover'}</button>
-                ${selectedVoFile ? `
+                <input type="file" id="input-vo-file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac" style="display: none;" />
+                <button type="button" id="btn-upload-vo" class="btn btn-secondary btn-sm" ${isVoUploading ? 'disabled' : ''}>${hasExistingVo ? 'Change Audio File' : 'Attach Voiceover'}</button>
+                ${selectedVoFile && !isVoUploading ? `
                   <button type="button" id="btn-remove-vo" class="btn btn-danger btn-sm">Clear Selection</button>
                 ` : ''}
-                <button type="button" id="btn-submit-vo" class="btn btn-primary btn-sm" ${!selectedVoFile ? 'disabled' : ''}>
-                  ${hasExistingVo ? 'Replace & Submit Voiceover' : 'Submit Voiceover'}
-                </button>
+                ${
+                  isVoUploading
+                    ? `<button type="button" class="btn btn-secondary btn-sm" disabled>⟳ Uploading in Background...</button>`
+                    : `<button type="button" id="btn-submit-vo" class="btn btn-primary btn-sm" ${!selectedVoFile ? 'disabled' : ''}>
+                        ${hasExistingVo ? 'Replace & Submit Voiceover' : 'Submit Voiceover'}
+                      </button>`
+                }
                 ${isVoSubmitted ? '<span class="status-submitted" style="margin-left: auto;">Submitted to Database</span>' : ''}
               </div>
 
@@ -535,38 +649,54 @@ export function renderTeamMemberView(container, navigate) {
         const genericTasksHtml = genericRoles
           .map((roleName, index) => {
             const roleDef = state.roles.find((r) => r.name.toLowerCase() === roleName.toLowerCase()) || { inputType: 'Text' };
-            const hasExistingCustom = Boolean(currentVideo?.customFields?.[roleName]);
-            const isDone = teamSession.submissionStatus[roleName] || hasExistingCustom;
-            const selectedCustomFile = teamSession.localFiles[roleName];
+            const activeCustomUpload = store.getBackgroundUpload(selectedChannelId, selectedVideoNum, roleName);
+            const isCustomUploading = activeCustomUpload && activeCustomUpload.status === 'uploading';
 
-            const customFeedbackBanner = teamSession.taskFeedback[roleName]
-              ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${teamSession.taskFeedback[roleName]}</div>`
+            const hasExistingCustom = Boolean(currentVideo?.customFields?.[roleName]);
+            const isDone = hasExistingCustom;
+            const selectedCustomFile = getStagedFile(selectedVideoNum, roleName);
+
+            const customFeedback = getFeedback(selectedVideoNum, roleName);
+            const customFeedbackBanner = customFeedback
+              ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 10px;">${escapeHtml(customFeedback)}</div>`
               : '';
 
-            const customVal = teamSession.inProgressDrafts[roleName] !== undefined
-              ? teamSession.inProgressDrafts[roleName]
+            const customVal = getDraft(selectedVideoNum, roleName) !== undefined
+              ? getDraft(selectedVideoNum, roleName)
               : (currentVideo?.customFields?.[roleName] || '');
 
             let controlHtml = '';
             if (roleDef.inputType === 'Attach File') {
               controlHtml = `
                 <div class="file-actions" style="margin-top: 8px;">
-                  <input type="file" id="input-file-${roleName}" style="display: none;" />
-                  <button type="button" class="btn btn-secondary btn-sm btn-custom-upload" data-role="${roleName}">${hasExistingCustom ? 'Change File' : 'Upload File'}</button>
-                  <button type="button" class="btn btn-primary btn-sm btn-custom-submit" data-role="${roleName}" ${!selectedCustomFile ? 'disabled' : ''}>
-                    ${hasExistingCustom ? 'Replace & Submit' : 'Submit'}
-                  </button>
+                  <input type="file" id="input-file-${escapeHtml(roleName)}" style="display: none;" />
+                  <button type="button" class="btn btn-secondary btn-sm btn-custom-upload" data-role="${escapeHtml(roleName)}" ${isCustomUploading ? 'disabled' : ''}>${hasExistingCustom ? 'Change File' : 'Upload File'}</button>
+                  ${
+                    isCustomUploading
+                      ? `<button type="button" class="btn btn-secondary btn-sm" disabled>⟳ Uploading in Background...</button>`
+                      : `<button type="button" class="btn btn-primary btn-sm btn-custom-submit" data-role="${escapeHtml(roleName)}" ${!selectedCustomFile ? 'disabled' : ''}>
+                          ${hasExistingCustom ? 'Replace & Submit' : 'Submit'}
+                        </button>`
+                  }
                   ${isDone ? '<span class="status-submitted" style="margin-left: auto;">Submitted to Database</span>' : ''}
                 </div>
                 <div class="helper-text" style="margin-top: 6px;">
-                  ${selectedCustomFile ? `Selected: <strong>${selectedCustomFile.name}</strong>` : hasExistingCustom ? `Current file in DB: <strong>${currentVideo.customFields[roleName].name}</strong>` : 'No file selected yet'}
+                  ${
+                    isCustomUploading
+                      ? `<span style="color: var(--accent);">⟳ Uploading "${escapeHtml(activeCustomUpload.fileName)}" in background...</span>`
+                      : selectedCustomFile
+                      ? `Selected: <strong>${escapeHtml(selectedCustomFile.name)}</strong>`
+                      : hasExistingCustom
+                      ? `Current file in DB: <strong>${escapeHtml(currentVideo.customFields[roleName]?.name || 'file')}</strong>`
+                      : 'No file selected yet'
+                  }
                 </div>
               `;
             } else if (roleDef.inputType === 'Number') {
               controlHtml = `
                 <div style="display: flex; gap: 8px; align-items: center; max-width: 320px; margin-top: 8px;">
-                  <input type="number" id="input-val-${roleName}" value="${customVal}" placeholder="Enter number..." />
-                  <button type="button" class="btn btn-primary btn-sm btn-custom-submit-num" data-role="${roleName}">
+                  <input type="number" id="input-val-${escapeHtml(roleName)}" value="${escapeHtml(customVal)}" placeholder="Enter number..." />
+                  <button type="button" class="btn btn-primary btn-sm btn-custom-submit-num" data-role="${escapeHtml(roleName)}">
                     ${hasExistingCustom ? 'Replace & Submit' : 'Submit'}
                   </button>
                   ${isDone ? '<span class="status-submitted">Submitted</span>' : ''}
@@ -574,9 +704,9 @@ export function renderTeamMemberView(container, navigate) {
               `;
             } else {
               controlHtml = `
-                <textarea id="input-val-${roleName}" rows="3" placeholder="Type or paste here...">${customVal}</textarea>
+                <textarea id="input-val-${escapeHtml(roleName)}" rows="3" placeholder="Type or paste here...">${escapeHtml(customVal)}</textarea>
                 <div style="margin-top: 8px; display: flex; align-items: center; gap: 10px;">
-                  <button type="button" id="btn-custom-submit-${roleName}" class="btn btn-primary btn-sm btn-custom-submit-text" data-role="${roleName}">
+                  <button type="button" id="btn-custom-submit-${escapeHtml(roleName)}" class="btn btn-primary btn-sm btn-custom-submit-text" data-role="${escapeHtml(roleName)}">
                     ${hasExistingCustom ? 'Replace & Submit' : 'Submit'}
                   </button>
                   ${isDone ? '<span class="status-submitted">Submitted to Database</span>' : ''}
@@ -587,7 +717,7 @@ export function renderTeamMemberView(container, navigate) {
             return `
               <div style="padding: 14px 0; border-bottom: 1px solid var(--border);">
                 <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
-                  <span style="font-weight: 600;">Task ${index + 1}: ${roleName}</span>
+                  <span style="font-weight: 600;">Task ${index + 1}: ${escapeHtml(roleName)}</span>
                   ${isDone ? '<span class="status-submitted">✓ Task Done.</span>' : ''}
                 </div>
 
@@ -621,6 +751,8 @@ export function renderTeamMemberView(container, navigate) {
 
     container.innerHTML = `
       <div class="main-content">
+        ${globalUploadsBarHtml}
+
         <!-- Common Elements Bar -->
         <div class="card" style="display: flex; flex-direction: column; gap: 12px;">
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
@@ -711,13 +843,30 @@ export function renderTeamMemberView(container, navigate) {
           <h2>List of Added content (All transactions stacked recorded like a ledger)</h2>
           <div class="scrollable-container" style="max-height: 280px; margin-top: 10px;">
             <div class="ledger-list">
-              ${ledgerHtml || '<div style="padding: 16px;" class="helper-text">No ledger entries recorded yet.</div>'}
+              ${
+                (state.ledger || []).slice(0, 8).map((e) => `
+                  <div class="ledger-item">
+                    <div class="ledger-item-header">
+                      <div>
+                        <span class="ledger-actor">${escapeHtml(e.actor)}</span>
+                        <span class="ledger-desc"> ${escapeHtml(maskTextForMember(e.action, channels))}</span>
+                      </div>
+                      <span class="ledger-time">${e.timestamp}</span>
+                    </div>
+                    <div style="font-size: 11px; color: var(--text-muted);">
+                      Channel: ${escapeHtml(maskTextForMember(e.channel, channels))} ${e.videoNumber ? `• Video ${e.videoNumber}` : ''} • Task: ${escapeHtml(e.task)}
+                    </div>
+                    ${e.fileReference ? `<div class="ledger-ref">${escapeHtml(e.fileReference)}</div>` : ''}
+                  </div>
+                `).join('') || '<div style="padding: 16px;" class="helper-text">No ledger entries recorded yet.</div>'
+              }
             </div>
           </div>
         </div>
       </div>
     `;
 
+    // Event Listeners:
     const copyTitleBtn = container.querySelector('#btn-copy-fetched-title');
     if (copyTitleBtn && currentVideo?.title) {
       copyTitleBtn.addEventListener('click', async (e) => {
@@ -759,7 +908,6 @@ export function renderTeamMemberView(container, navigate) {
         sessionStorage.setItem('yta_team_channel_id', selectedChannelId);
         selectedVideoNum = '';
         sessionStorage.setItem('yta_team_video_num', '');
-        clearTeamSession();
         render();
       });
     }
@@ -780,13 +928,13 @@ export function renderTeamMemberView(container, navigate) {
       });
     }
 
+    // Video Picker: Switching video preserves state and does NOT block
     const videoPicker = container.querySelector('#member-video-picker');
     if (videoPicker && selectedChannelId && channelVideos.length) {
       videoPicker.querySelectorAll('[data-video-number]').forEach((option) => {
         option.addEventListener('click', () => {
           selectedVideoNum = option.dataset.videoNumber;
           sessionStorage.setItem('yta_team_video_num', selectedVideoNum);
-          clearTeamSession();
           render();
         });
       });
@@ -796,14 +944,14 @@ export function renderTeamMemberView(container, navigate) {
     const metaInput = container.querySelector('#input-meta-info');
     if (metaInput) {
       metaInput.addEventListener('input', (e) => {
-        teamSession.inProgressDrafts['meta'] = e.target.value;
+        setDraft(selectedVideoNum, 'meta', e.target.value);
       });
     }
 
     const scriptInput = container.querySelector('#input-script-text');
     if (scriptInput) {
       scriptInput.addEventListener('input', (e) => {
-        teamSession.inProgressDrafts['script'] = e.target.value;
+        setDraft(selectedVideoNum, 'script', e.target.value);
       });
     }
 
@@ -828,7 +976,7 @@ export function renderTeamMemberView(container, navigate) {
           const original = e.target.textContent;
           e.target.textContent = 'Copied!';
           setTimeout(() => {
-            e.target.textContent = original;
+            if (e.target) e.target.textContent = original;
           }, 1500);
         } catch (err) {
           console.error('Clipboard copy failed:', err);
@@ -836,7 +984,7 @@ export function renderTeamMemberView(container, navigate) {
       });
     });
 
-    // Thumbnail Event Handlers
+    // Thumbnail Event Handlers (NON-BLOCKING BACKGROUND UPLOAD)
     const thumbInput = container.querySelector('#input-thumb-file');
     const attachThumbBtn = container.querySelector('#btn-attach-thumb');
     const removeThumbBtn = container.querySelector('#btn-remove-thumb');
@@ -847,13 +995,8 @@ export function renderTeamMemberView(container, navigate) {
     }
     if (removeThumbBtn) {
       removeThumbBtn.addEventListener('click', () => {
-        delete teamSession.localFiles['thumbnail'];
-        if (teamSession.thumbPreviewUrl) {
-          try {
-            URL.revokeObjectURL(teamSession.thumbPreviewUrl);
-          } catch (err) {}
-          teamSession.thumbPreviewUrl = null;
-        }
+        clearStagedFile(selectedVideoNum, 'thumbnail');
+        setFeedback(selectedVideoNum, 'thumbnail', '');
         render();
       });
     }
@@ -861,55 +1004,37 @@ export function renderTeamMemberView(container, navigate) {
       thumbInput.addEventListener('change', (e) => {
         if (e.target.files && e.target.files[0]) {
           const file = e.target.files[0];
-          teamSession.localFiles['thumbnail'] = file;
+          setStagedFile(selectedVideoNum, 'thumbnail', file);
           try {
-            if (teamSession.thumbPreviewUrl) {
-              URL.revokeObjectURL(teamSession.thumbPreviewUrl);
-            }
-            teamSession.thumbPreviewUrl = URL.createObjectURL(file);
+            setPreviewUrl(selectedVideoNum, 'thumbnail', URL.createObjectURL(file));
           } catch (err) {}
-          delete teamSession.taskFeedback['thumbnail'];
+          setFeedback(selectedVideoNum, 'thumbnail', '');
           render();
         }
       });
     }
     if (submitThumbBtn) {
-      submitThumbBtn.addEventListener('click', async () => {
-        const file = teamSession.localFiles['thumbnail'];
+      submitThumbBtn.addEventListener('click', () => {
+        const file = getStagedFile(selectedVideoNum, 'thumbnail');
         if (!file) {
-          teamSession.taskFeedback['thumbnail'] = 'Please select or attach an image file first before submitting.';
+          setFeedback(selectedVideoNum, 'thumbnail', 'Please select or attach an image file first before submitting.');
           render();
           return;
         }
 
-        const hadPrevious = Boolean(currentVideo?.thumbnail && currentVideo.thumbnail.name);
+        const vNum = selectedVideoNum;
+        const fName = file.name;
 
-        submitThumbBtn.disabled = true;
-        submitThumbBtn.textContent = 'Uploading & Submitting...';
-
-        const res = await store.submitContent({
+        // START NON-BLOCKING BACKGROUND UPLOAD
+        store.startBackgroundUpload({
           channelId: selectedChannelId,
-          videoNumber: selectedVideoNum,
+          videoNumber: vNum,
           task: 'thumbnail',
           file: file
         });
 
-        submitThumbBtn.disabled = false;
-        submitThumbBtn.textContent = hadPrevious ? 'Replace & Submit Image' : 'Submit Image';
-
-        if (res.success) {
-          delete teamSession.localFiles['thumbnail'];
-          if (teamSession.thumbPreviewUrl) {
-            try {
-              URL.revokeObjectURL(teamSession.thumbPreviewUrl);
-            } catch (err) {}
-            teamSession.thumbPreviewUrl = null;
-          }
-          teamSession.submissionStatus['thumbnail'] = 'Submitted';
-          teamSession.taskFeedback['thumbnail'] = `✓ Thumbnail "${file.name}" successfully saved to database!`;
-        } else {
-          teamSession.taskFeedback['thumbnail'] = `Submission error: ${res.error || 'Failed to submit'}`;
-        }
+        clearStagedFile(vNum, 'thumbnail');
+        setFeedback(vNum, 'thumbnail', `⟳ Thumbnail "${fName}" is uploading in the background. You can shift to other videos now!`);
         render();
       });
     }
@@ -919,15 +1044,14 @@ export function renderTeamMemberView(container, navigate) {
     if (submitMetaBtn) {
       submitMetaBtn.addEventListener('click', async () => {
         const inputEl = container.querySelector('#input-meta-info');
-        const textVal = (inputEl?.value || teamSession.inProgressDrafts['meta'] || '').trim();
+        const textVal = (inputEl?.value || getDraft(selectedVideoNum, 'meta') || '').trim();
         if (!textVal) {
-          teamSession.taskFeedback['meta'] = 'Please enter Meta information (description & tags) before submitting.';
+          setFeedback(selectedVideoNum, 'meta', 'Please enter Meta information (description & tags) before submitting.');
           render();
           return;
         }
 
         const hadPrevious = Boolean(currentVideo?.metaInfo && currentVideo.metaInfo.trim());
-
         submitMetaBtn.disabled = true;
         submitMetaBtn.textContent = 'Submitting to database...';
 
@@ -942,11 +1066,10 @@ export function renderTeamMemberView(container, navigate) {
         submitMetaBtn.textContent = hadPrevious ? 'Replace & Submit Meta Info' : 'Submit Meta Information';
 
         if (res.success) {
-          delete teamSession.inProgressDrafts['meta'];
-          teamSession.submissionStatus['meta'] = 'Submitted';
-          teamSession.taskFeedback['meta'] = '✓ Meta Info successfully saved to database!';
+          setDraft(selectedVideoNum, 'meta', '');
+          setFeedback(selectedVideoNum, 'meta', '✓ Meta Info successfully saved to database!');
         } else {
-          teamSession.taskFeedback['meta'] = `Submission error: ${res.error || 'Failed to submit'}`;
+          setFeedback(selectedVideoNum, 'meta', `Submission error: ${res.error || 'Failed to submit'}`);
         }
         render();
       });
@@ -957,15 +1080,14 @@ export function renderTeamMemberView(container, navigate) {
     if (submitScriptBtn) {
       submitScriptBtn.addEventListener('click', async () => {
         const inputEl = container.querySelector('#input-script-text');
-        const scriptVal = (inputEl?.value || teamSession.inProgressDrafts['script'] || '').trim();
+        const scriptVal = (inputEl?.value || getDraft(selectedVideoNum, 'script') || '').trim();
         if (!scriptVal) {
-          teamSession.taskFeedback['script'] = 'Please enter script content before submitting.';
+          setFeedback(selectedVideoNum, 'script', 'Please enter script content before submitting.');
           render();
           return;
         }
 
         const hadPrevious = Boolean(currentVideo?.script && currentVideo.script.trim());
-
         submitScriptBtn.disabled = true;
         submitScriptBtn.textContent = 'Submitting to database...';
 
@@ -980,17 +1102,16 @@ export function renderTeamMemberView(container, navigate) {
         submitScriptBtn.textContent = hadPrevious ? 'Replace & Submit Script' : 'Submit Script';
 
         if (res.success) {
-          delete teamSession.inProgressDrafts['script'];
-          teamSession.submissionStatus['script'] = 'Submitted';
-          teamSession.taskFeedback['script'] = '✓ Script successfully saved to database!';
+          setDraft(selectedVideoNum, 'script', '');
+          setFeedback(selectedVideoNum, 'script', '✓ Script successfully saved to database!');
         } else {
-          teamSession.taskFeedback['script'] = `Submission error: ${res.error || 'Failed to submit'}`;
+          setFeedback(selectedVideoNum, 'script', `Submission error: ${res.error || 'Failed to submit'}`);
         }
         render();
       });
     }
 
-    // Voiceover Handlers
+    // Voiceover Handlers (NON-BLOCKING BACKGROUND UPLOAD)
     const voInput = container.querySelector('#input-vo-file');
     const uploadVoBtn = container.querySelector('#btn-upload-vo');
     const removeVoBtn = container.querySelector('#btn-remove-vo');
@@ -1001,11 +1122,8 @@ export function renderTeamMemberView(container, navigate) {
     }
     if (removeVoBtn) {
       removeVoBtn.addEventListener('click', () => {
-        delete teamSession.localFiles['voiceover'];
-        if (teamSession.voPreviewUrl) {
-          try { URL.revokeObjectURL(teamSession.voPreviewUrl); } catch (e) {}
-          teamSession.voPreviewUrl = null;
-        }
+        clearStagedFile(selectedVideoNum, 'voiceover');
+        setFeedback(selectedVideoNum, 'voiceover', '');
         render();
       });
     }
@@ -1013,51 +1131,37 @@ export function renderTeamMemberView(container, navigate) {
       voInput.addEventListener('change', (e) => {
         if (e.target.files && e.target.files[0]) {
           const f = e.target.files[0];
-          teamSession.localFiles['voiceover'] = f;
-          if (teamSession.voPreviewUrl) {
-            try { URL.revokeObjectURL(teamSession.voPreviewUrl); } catch (err) {}
-          }
-          teamSession.voPreviewUrl = URL.createObjectURL(f);
-          delete teamSession.taskFeedback['voiceover'];
+          setStagedFile(selectedVideoNum, 'voiceover', f);
+          try {
+            setPreviewUrl(selectedVideoNum, 'voiceover', URL.createObjectURL(f));
+          } catch (err) {}
+          setFeedback(selectedVideoNum, 'voiceover', '');
           render();
         }
       });
     }
     if (submitVoBtn) {
-      submitVoBtn.addEventListener('click', async () => {
-        const file = teamSession.localFiles['voiceover'];
+      submitVoBtn.addEventListener('click', () => {
+        const file = getStagedFile(selectedVideoNum, 'voiceover');
         if (!file) {
-          teamSession.taskFeedback['voiceover'] = 'Please select or attach an audio voiceover file first.';
+          setFeedback(selectedVideoNum, 'voiceover', 'Please select or attach an audio voiceover file first.');
           render();
           return;
         }
 
-        const hadPrevious = Boolean(currentVideo?.voiceover && currentVideo.voiceover.name);
+        const vNum = selectedVideoNum;
+        const fName = file.name;
 
-        submitVoBtn.disabled = true;
-        submitVoBtn.textContent = 'Uploading & Submitting...';
-
-        const res = await store.submitContent({
+        // START NON-BLOCKING BACKGROUND UPLOAD
+        store.startBackgroundUpload({
           channelId: selectedChannelId,
-          videoNumber: selectedVideoNum,
+          videoNumber: vNum,
           task: 'voiceover',
           file: file
         });
 
-        submitVoBtn.disabled = false;
-        submitVoBtn.textContent = hadPrevious ? 'Replace & Submit Voiceover' : 'Submit Voiceover';
-
-        if (res.success) {
-          delete teamSession.localFiles['voiceover'];
-          if (teamSession.voPreviewUrl) {
-            try { URL.revokeObjectURL(teamSession.voPreviewUrl); } catch (err) {}
-            teamSession.voPreviewUrl = null;
-          }
-          teamSession.submissionStatus['voiceover'] = 'Submitted';
-          teamSession.taskFeedback['voiceover'] = `✓ Voiceover "${file.name}" successfully saved to database!`;
-        } else {
-          teamSession.taskFeedback['voiceover'] = `Submission error: ${res.error || 'Failed to submit'}`;
-        }
+        clearStagedFile(vNum, 'voiceover');
+        setFeedback(vNum, 'voiceover', `⟳ Voiceover "${fName}" is uploading in the background. You can shift to other videos now!`);
         render();
       });
     }
@@ -1082,7 +1186,7 @@ export function renderTeamMemberView(container, navigate) {
       });
     });
 
-    // Generic Handlers
+    // Generic Handlers (NON-BLOCKING BACKGROUND UPLOAD FOR FILES)
     container.querySelectorAll('.btn-custom-upload').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         const role = e.target.dataset.role;
@@ -1090,8 +1194,8 @@ export function renderTeamMemberView(container, navigate) {
         if (fi) {
           fi.onchange = (ev) => {
             if (ev.target.files && ev.target.files[0]) {
-              teamSession.localFiles[role] = ev.target.files[0];
-              delete teamSession.taskFeedback[role];
+              setStagedFile(selectedVideoNum, role, ev.target.files[0]);
+              setFeedback(selectedVideoNum, role, '');
               render();
             }
           };
@@ -1101,34 +1205,27 @@ export function renderTeamMemberView(container, navigate) {
     });
 
     container.querySelectorAll('.btn-custom-submit').forEach((btn) => {
-      btn.addEventListener('click', async (e) => {
-        const role = e.target.dataset.role;
-        const file = teamSession.localFiles[role];
+      btn.addEventListener('click', () => {
+        const role = btn.dataset.role;
+        const file = getStagedFile(selectedVideoNum, role);
         if (!file) {
-          teamSession.taskFeedback[role] = `Please attach a file for ${role} before submitting.`;
+          setFeedback(selectedVideoNum, role, `Please attach a file for ${role} before submitting.`);
           render();
           return;
         }
 
-        const hadPrevious = Boolean(currentVideo?.customFields?.[role]);
+        const vNum = selectedVideoNum;
+        const fName = file.name;
 
-        btn.disabled = true;
-        btn.textContent = 'Submitting...';
-        const res = await store.submitContent({
+        store.startBackgroundUpload({
           channelId: selectedChannelId,
-          videoNumber: selectedVideoNum,
+          videoNumber: vNum,
           task: role,
           file: file
         });
-        btn.disabled = false;
 
-        if (res.success) {
-          delete teamSession.localFiles[role];
-          teamSession.submissionStatus[role] = 'Submitted';
-          teamSession.taskFeedback[role] = `✓ ${role} "${file.name}" successfully saved to database!`;
-        } else {
-          teamSession.taskFeedback[role] = `Submission error: ${res.error || 'Failed to submit'}`;
-        }
+        clearStagedFile(vNum, role);
+        setFeedback(vNum, role, `⟳ "${fName}" for ${role} is uploading in the background!`);
         render();
       });
     });
@@ -1138,15 +1235,15 @@ export function renderTeamMemberView(container, navigate) {
         const role = e.target.dataset.role;
         const val = (container.querySelector(`#input-val-${role}`)?.value || '').trim();
         if (!val) {
-          teamSession.taskFeedback[role] = `Please enter a number for ${role} before submitting.`;
+          setFeedback(selectedVideoNum, role, `Please enter a number for ${role} before submitting.`);
           render();
           return;
         }
 
         const hadPrevious = Boolean(currentVideo?.customFields?.[role]);
-
         btn.disabled = true;
         btn.textContent = 'Submitting...';
+
         const res = await store.submitContent({
           channelId: selectedChannelId,
           videoNumber: selectedVideoNum,
@@ -1156,11 +1253,9 @@ export function renderTeamMemberView(container, navigate) {
         btn.disabled = false;
 
         if (res.success) {
-          delete teamSession.inProgressDrafts[role];
-          teamSession.submissionStatus[role] = 'Submitted';
-          teamSession.taskFeedback[role] = `✓ ${role} successfully saved to database!`;
+          setFeedback(selectedVideoNum, role, `✓ ${role} successfully saved to database!`);
         } else {
-          teamSession.taskFeedback[role] = `Submission error: ${res.error || 'Failed to submit'}`;
+          setFeedback(selectedVideoNum, role, `Submission error: ${res.error || 'Failed to submit'}`);
         }
         render();
       });
@@ -1171,15 +1266,15 @@ export function renderTeamMemberView(container, navigate) {
         const role = e.target.dataset.role;
         const val = (container.querySelector(`#input-val-${role}`)?.value || '').trim();
         if (!val) {
-          teamSession.taskFeedback[role] = `Please enter text for ${role} before submitting.`;
+          setFeedback(selectedVideoNum, role, `Please enter text for ${role} before submitting.`);
           render();
           return;
         }
 
         const hadPrevious = Boolean(currentVideo?.customFields?.[role]);
-
         btn.disabled = true;
         btn.textContent = 'Submitting...';
+
         const res = await store.submitContent({
           channelId: selectedChannelId,
           videoNumber: selectedVideoNum,
@@ -1189,11 +1284,9 @@ export function renderTeamMemberView(container, navigate) {
         btn.disabled = false;
 
         if (res.success) {
-          delete teamSession.inProgressDrafts[role];
-          teamSession.submissionStatus[role] = 'Submitted';
-          teamSession.taskFeedback[role] = `✓ ${role} successfully saved to database!`;
+          setFeedback(selectedVideoNum, role, `✓ ${role} successfully saved to database!`);
         } else {
-          teamSession.taskFeedback[role] = `Submission error: ${res.error || 'Failed to submit'}`;
+          setFeedback(selectedVideoNum, role, `Submission error: ${res.error || 'Failed to submit'}`);
         }
         render();
       });
