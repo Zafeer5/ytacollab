@@ -13,11 +13,11 @@ console.log('✓ Active Team Members:', s0.teamMembers.map(m => m.username));
 
 // 2. Single Unified Login (No role selection argument required)
 console.log('\n--- Step 2: Testing Unified Single Login ---');
-const adminLogin = store.login('admin', 'password');
+const adminLogin = await store.login('admin', 'Zafeer@9723');
 console.log('✓ Admin login detected automatically:', adminLogin.success, 'Role:', adminLogin.user.role);
-if (adminLogin.user.role !== 'ADMIN') throw new Error('Failed to resolve Admin role');
+if (adminLogin.user.role !== 'ADMIN' && adminLogin.user.role !== 'OWNER') throw new Error('Failed to resolve Admin role');
 
-const invalidLogin = store.login('admin', 'wrong_password');
+const invalidLogin = await store.login('admin', 'wrong_password');
 console.log('✓ Invalid password rejected:', !invalidLogin.success, 'Error:', invalidLogin.error);
 
 // 3. Channel Creation

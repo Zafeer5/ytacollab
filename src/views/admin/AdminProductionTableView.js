@@ -1,4 +1,4 @@
-import { store, downloadFileSecurely, openThumbnailModal } from '../../lib/store.js';
+import { store, downloadFileSecurely, openThumbnailModal, getChannelMemberDisplayName } from '../../lib/store.js';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -56,7 +56,7 @@ export function renderAdminProductionTableView(container, navigate) {
 
     // Channel dropdown options
     const channelOptions = channels
-      .map((c) => `<option value="${c.id}" ${c.id === selectedChannelId ? 'selected' : ''}>${c.name}</option>`)
+      .map((c) => `<option value="${c.id}" ${c.id === selectedChannelId ? 'selected' : ''}>${escapeHtml(c.name)} (${getChannelMemberDisplayName(c, channels)})</option>`)
       .join('');
 
     // Table rows

@@ -1,5 +1,6 @@
-import { store } from '../lib/store.js';
+import { store, maskTextForMember } from '../lib/store.js';
 import { toggleMobileSidebar } from './AdminSidebar.js';
+import { openAccountSettingsModal } from './AccountSettingsModal.js';
 
 export function renderHeader(container, currentView, navigate) {
   const state = store.getState();
@@ -32,7 +33,11 @@ export function renderHeader(container, currentView, navigate) {
 
     rightContent = `
       <div class="nav-links" style="align-items: center; gap: 10px;">
-        <span class="helper-text" style="color: var(--text-primary); font-weight: 600;">${roleLabel}</span>
+        <button type="button" id="header-btn-settings" class="btn-account-settings" title="Change Username or Password">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          <span style="font-weight: 600;">${user.username || roleLabel}</span>
+          <span style="font-size: 10px; opacity: 0.6; margin-left: 2px;">(Edit)</span>
+        </button>
       </div>
     `;
   } else if (user.role === 'TEAM_MEMBER') {
@@ -44,7 +49,11 @@ export function renderHeader(container, currentView, navigate) {
 
     rightContent = `
       <div class="nav-links" style="display: flex; align-items: center; gap: 8px;">
-        <span class="helper-text" style="color: var(--text-primary); font-weight: 600;">${user.username}</span>
+        <button type="button" id="header-btn-settings" class="btn-account-settings" title="Change Username or Password">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          <span style="font-weight: 600;">${user.username}</span>
+          <span style="font-size: 10px; opacity: 0.6; margin-left: 2px;">(Edit)</span>
+        </button>
 
         <!-- Notification Bell Popover next to pre-existed Logout button -->
         <div class="notif-wrapper" id="header-notif-wrapper">
@@ -75,7 +84,7 @@ export function renderHeader(container, currentView, navigate) {
                 ${myNotifications.map((n) => `
                   <div class="notif-card-item">
                     <div style="flex: 1; min-width: 0;">
-                      <div class="notif-card-msg">${n.message}</div>
+                      <div class="notif-card-msg">${maskTextForMember(n.message, state.channels)}</div>
                       <div class="notif-card-time">${n.timestamp}</div>
                     </div>
                     <button type="button" class="btn-dismiss-notif" data-notif-id="${n.id}" title="Dismiss">✕</button>
@@ -166,6 +175,16 @@ export function renderHeader(container, currentView, navigate) {
       await store.clearNotification(notifId);
     });
   });
+
+  const settingsBtn = container.querySelector('#header-btn-settings');
+  if (settingsBtn) {
+    settingsBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      openAccountSettingsModal(() => {
+        renderHeader(container, currentView, navigate);
+      });
+    });
+  }
 
   const logoutBtn = container.querySelector('#nav-logout');
   if (logoutBtn) {

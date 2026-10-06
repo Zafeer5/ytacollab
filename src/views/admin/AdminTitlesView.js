@@ -1,4 +1,4 @@
-import { store } from '../../lib/store.js';
+import { store, getChannelMemberDisplayName } from '../../lib/store.js';
 
 export function renderAdminTitlesView(container, navigate) {
   let selectedChanId = localStorage.getItem('yta_selected_titles_channel') || '';
@@ -24,7 +24,7 @@ export function renderAdminTitlesView(container, navigate) {
       : [];
 
     const channelOptions = channels
-      .map((c) => `<option value="${c.id}" ${c.id === selectedChanId ? 'selected' : ''}>${c.name}</option>`)
+      .map((c) => `<option value="${c.id}" ${c.id === selectedChanId ? 'selected' : ''}>${c.name} (${getChannelMemberDisplayName(c, channels)})</option>`)
       .join('');
 
     const titlesListHtml = existingVideos

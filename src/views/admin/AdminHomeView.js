@@ -1,4 +1,4 @@
-import { store, downloadFileSecurely, openThumbnailModal } from '../../lib/store.js';
+import { store, downloadFileSecurely, openThumbnailModal, getChannelMemberDisplayName } from '../../lib/store.js';
 
 export function renderAdminHomeView(container, navigate) {
   let selectedChannelId = '';
@@ -24,7 +24,7 @@ export function renderAdminHomeView(container, navigate) {
 
     // Build channel options
     const channelOptions = channels
-      .map((c) => `<option value="${c.id}" ${c.id === selectedChannelId ? 'selected' : ''}>${c.name}</option>`)
+      .map((c) => `<option value="${c.id}" ${c.id === selectedChannelId ? 'selected' : ''}>${c.name} (${getChannelMemberDisplayName(c, channels)})</option>`)
       .join('');
 
     // Build real-time updates list (last 5 messages)

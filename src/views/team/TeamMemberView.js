@@ -1,4 +1,12 @@
-import { store, downloadFileSecurely } from '../../lib/store.js';
+import {
+  store,
+  downloadFileSecurely,
+  getChannelMemberDisplayName,
+  getChannelInitials,
+  maskTextForMember,
+  openChannelAboutModal
+} from '../../lib/store.js';
+import { openAccountSettingsModal } from '../../components/AccountSettingsModal.js';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -54,8 +62,9 @@ export function renderTeamMemberView(container, navigate) {
 
   function renderPromptsBox(roleName) {
     const prompts = store.getPromptsForRole(roleName, selectedChannelId);
-    const selectedChannel = store.getState().channels?.find((c) => c.id === selectedChannelId);
-    const channelLabel = selectedChannel ? selectedChannel.name : 'Channel';
+    const channels = store.getState().channels || [];
+    const selectedChannel = channels.find((c) => c.id === selectedChannelId);
+    const channelLabel = selectedChannel ? getChannelMemberDisplayName(selectedChannel, channels) : 'Channel';
 
     if (!prompts || prompts.length === 0) {
       return `
@@ -107,6 +116,7 @@ export function renderTeamMemberView(container, navigate) {
 
     const assignedRoles = user.assignedRoles || [];
     const channels = state.channels || [];
+    const selectedChannel = channels.find((c) => c.id === selectedChannelId);
 
     // Filter videos only if a channel is selected
     const channelVideos = selectedChannelId
@@ -133,10 +143,10 @@ export function renderTeamMemberView(container, navigate) {
       ? (currentVideo.title || '— (No Title Found)')
       : '— (Video Not Found)';
 
-    // Channel dropdown options
+    // Channel dropdown options (Team members only see Channel 1 - EM)
     const channelOptions = [
       `<option value="" ${!selectedChannelId ? 'selected' : ''}>-- Select Channel --</option>`,
-      ...channels.map((c) => `<option value="${c.id}" ${c.id === selectedChannelId ? 'selected' : ''}>${escapeHtml(c.name)}</option>`)
+      ...channels.map((c) => `<option value="${c.id}" ${c.id === selectedChannelId ? 'selected' : ''}>${escapeHtml(getChannelMemberDisplayName(c, channels))}</option>`)
     ].join('');
 
     const assignedRoleNames = new Set(assignedRoles.map((roleName) => roleName.toLowerCase()));
@@ -182,7 +192,7 @@ export function renderTeamMemberView(container, navigate) {
       (n) => n.targetUsername === user.username
     );
 
-    // Shared ledger entries
+    // Shared ledger entries (Masked for team member privacy)
     const ledgerEntries = (state.ledger || []).slice(0, 8);
     const ledgerHtml = ledgerEntries
       .map((e) => `
@@ -190,12 +200,12 @@ export function renderTeamMemberView(container, navigate) {
           <div class="ledger-item-header">
             <div>
               <span class="ledger-actor">${e.actor}</span>
-              <span class="ledger-desc"> ${e.action}</span>
+              <span class="ledger-desc"> ${escapeHtml(maskTextForMember(e.action, channels))}</span>
             </div>
             <span class="ledger-time">${e.timestamp}</span>
           </div>
           <div style="font-size: 11px; color: var(--text-muted);">
-            Channel: ${e.channel} ${e.videoNumber ? `• Video ${e.videoNumber}` : ''} • Task: ${e.task}
+            Channel: ${escapeHtml(maskTextForMember(e.channel, channels))} ${e.videoNumber ? `• Video ${e.videoNumber}` : ''} • Task: ${e.task}
           </div>
           ${e.fileReference ? `<div class="ledger-ref">${e.fileReference}</div>` : ''}
         </div>
@@ -218,8 +228,7 @@ export function renderTeamMemberView(container, navigate) {
 
     // If team member has not chosen channel and video, show clean guidance
     if (!currentVideo) {
-      const selectedChannel = channels.find((c) => c.id === selectedChannelId);
-      const channelName = selectedChannel ? selectedChannel.name : '';
+      const channelDisplayName = selectedChannel ? getChannelMemberDisplayName(selectedChannel, channels) : '';
 
       let channelPromptsPreview = '';
       if (selectedChannelId && assignedRoles.length > 0) {
@@ -232,7 +241,7 @@ export function renderTeamMemberView(container, navigate) {
           channelPromptsPreview = `
             <div style="margin-top: 20px; text-align: left;">
               <h4 style="margin-bottom: 10px; font-size: 13px; color: var(--text-primary); display: flex; align-items: center; gap: 6px;">
-                Prompts for <strong>${channelName}</strong> (${assignedPrompts.length} prompt${assignedPrompts.length > 1 ? 's' : ''} for your roles):
+                Prompts for <strong>${escapeHtml(channelDisplayName)}</strong> (${assignedPrompts.length} prompt${assignedPrompts.length > 1 ? 's' : ''} for your roles):
               </h4>
               <div class="prompts-container" style="max-height: 240px; overflow-y: auto;">
                 ${assignedPrompts.map((p) => `
@@ -256,7 +265,7 @@ export function renderTeamMemberView(container, navigate) {
         } else {
           channelPromptsPreview = `
             <div style="margin-top: 16px; padding: 10px 14px; border: 1px dashed var(--border); border-radius: var(--radius); background: rgba(255,255,255,0.01); text-align: center; font-size: 12px; color: var(--text-muted);">
-              No prompts currently configured for <strong>${channelName}</strong> for your assigned roles.
+              No prompts currently configured for <strong>${escapeHtml(channelDisplayName)}</strong> for your assigned roles.
             </div>
           `;
         }
@@ -270,7 +279,7 @@ export function renderTeamMemberView(container, navigate) {
           <p class="helper-text" style="max-width: 440px; margin: 0 auto;">
             ${!selectedChannelId
               ? 'Choose a channel above to load videos and prompt templates.'
-              : `Select a video from ${escapeHtml(channelName)} to submit content.`}
+              : `Select a video from ${escapeHtml(channelDisplayName)} to submit content.`}
           </p>
           ${channelPromptsPreview}
         </div>
@@ -619,12 +628,24 @@ export function renderTeamMemberView(container, navigate) {
               <span class="section-label">Team Member</span>
               <div style="font-size: 16px; font-weight: 700;">${escapeHtml(user.username)}</div>
             </div>
+            <button type="button" id="btn-team-change-credentials" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 4px 12px; display: inline-flex; align-items: center; gap: 6px;" title="Change your username or password">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+              <span>Change Username / Password</span>
+            </button>
           </div>
 
           <!-- Channel & Video Selection -->
           <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;">
             <div class="form-group" style="margin-bottom: 0;">
-              <label for="member-channel-select">Select Channel</label>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <label for="member-channel-select" style="margin-bottom: 0;">Select Channel</label>
+                ${selectedChannel ? `
+                  <button type="button" id="btn-view-channel-about" class="btn-channel-about-link" title="Click to view what this channel is about">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -2px; margin-right: 3px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                    <span>About Channel</span>
+                  </button>
+                ` : ''}
+              </div>
               <select id="member-channel-select">
                 ${channelOptions || '<option value="">No channels available</option>'}
               </select>
@@ -740,6 +761,22 @@ export function renderTeamMemberView(container, navigate) {
         sessionStorage.setItem('yta_team_video_num', '');
         clearTeamSession();
         render();
+      });
+    }
+
+    const viewAboutBtn = container.querySelector('#btn-view-channel-about');
+    if (viewAboutBtn && selectedChannel) {
+      viewAboutBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        openChannelAboutModal(selectedChannel, channels);
+      });
+    }
+
+    const changeCredsBtn = container.querySelector('#btn-team-change-credentials');
+    if (changeCredsBtn) {
+      changeCredsBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        openAccountSettingsModal(() => render());
       });
     }
 

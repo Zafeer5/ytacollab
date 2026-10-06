@@ -30,10 +30,14 @@ alter table public.profiles add column if not exists password_text text;
 create table if not exists public.channels (
     id uuid primary key default gen_random_uuid(),
     name text not null,
+    description text,
     created_by uuid references public.profiles(id) on delete set null,
     created_at timestamptz default now() not null,
     updated_at timestamptz default now() not null
 );
+
+-- Migration helpers for channels:
+alter table public.channels add column if not exists description text;
 
 -- ------------------------------------------------------------------------------
 -- 3. VIDEOS TABLE

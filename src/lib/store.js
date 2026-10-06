@@ -267,6 +267,121 @@ export function openThumbnailModal(url, filename = 'thumbnail.png') {
   });
 }
 
+// Channel Identification & Masking Helpers
+export function getChannelInitials(name) {
+  if (!name || typeof name !== 'string') return '';
+  const clean = name.trim();
+  const words = clean.split(/[\s_\-]+/).filter(Boolean);
+  if (words.length > 1) {
+    return words.map((w) => w[0]).join('').toUpperCase();
+  }
+  const upperChars = clean.replace(/[^A-Z0-9]/g, '');
+  if (upperChars.length >= 2) {
+    return upperChars.slice(0, 3).toUpperCase();
+  }
+  return clean.slice(0, 2).toUpperCase();
+}
+
+export function getChannelDisplayNumber(channel, channels = []) {
+  if (!channel) return 1;
+  const list = channels.length ? channels : (store?.getState()?.channels || []);
+  const sorted = [...list].sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
+  const idx = sorted.findIndex((c) => c.id === channel.id);
+  return idx >= 0 ? idx + 1 : 1;
+}
+
+export function getChannelMemberDisplayName(channel, channels = []) {
+  if (!channel) return '';
+  const num = getChannelDisplayNumber(channel, channels);
+  const initials = getChannelInitials(channel.name);
+  return `Channel ${num} - ${initials}`;
+}
+
+export function maskTextForMember(text, channels = []) {
+  if (!text || typeof text !== 'string') return text;
+  let masked = text;
+  const list = channels.length ? channels : (store?.getState()?.channels || []);
+  for (const c of list) {
+    if (c.name) {
+      const displayName = getChannelMemberDisplayName(c, list);
+      const escaped = c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      masked = masked.replace(new RegExp(escaped, 'gi'), displayName);
+    }
+  }
+  return masked;
+}
+
+// Opens modal popup displaying channel description / about information
+export function openChannelAboutModal(channel, channels = []) {
+  if (!channel) return;
+  const prev = document.getElementById('yta-channel-about-modal');
+  if (prev) prev.remove();
+
+  const backdrop = document.createElement('div');
+  backdrop.id = 'yta-channel-about-modal';
+  backdrop.className = 'channel-about-modal-backdrop';
+
+  const memberName = getChannelMemberDisplayName(channel, channels);
+  const initials = getChannelInitials(channel.name);
+  const description = (channel.description || '').trim();
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  backdrop.innerHTML = `
+    <div class="channel-about-modal-dialog" role="dialog" aria-modal="true" aria-label="About ${escapeHtml(memberName)}">
+      <div class="channel-about-modal-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="sidebar-tag" style="background: rgba(255, 122, 0, 0.15); color: var(--accent); border-color: var(--accent); font-weight: 700;">${escapeHtml(initials)}</span>
+          <div class="channel-about-modal-title">
+            About ${escapeHtml(memberName)}
+          </div>
+        </div>
+        <button type="button" class="channel-about-modal-close" id="btn-close-channel-about" title="Close (Esc)">✕</button>
+      </div>
+      <div class="channel-about-modal-body">
+        ${
+          description
+            ? `<div class="channel-about-content">${escapeHtml(description).replace(/\n/g, '<br/>')}</div>`
+            : `<div class="channel-about-empty">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom: 8px; opacity: 0.5;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+                <p style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">No guidelines added yet</p>
+                <p class="helper-text" style="font-size: 12px;">The administrator has not added specific instructions or guidelines for this channel yet.</p>
+              </div>`
+        }
+      </div>
+      <div class="channel-about-modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm btn-modal-close-action">Close</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+
+  const closeModal = () => {
+    backdrop.remove();
+    document.removeEventListener('keydown', onKeyDown);
+  };
+
+  const onKeyDown = (e) => {
+    if (e.key === 'Escape') closeModal();
+  };
+
+  document.addEventListener('keydown', onKeyDown);
+  backdrop.querySelector('#btn-close-channel-about').addEventListener('click', closeModal);
+  backdrop.querySelector('.btn-modal-close-action').addEventListener('click', closeModal);
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) closeModal();
+  });
+}
+
 function formatTimestamp(date = new Date()) {
   const d = new Date(date);
   const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
@@ -460,7 +575,7 @@ class SupabaseStore {
         ledRes,
         notifRes
       ] = await Promise.all([
-        supabase.from('channels').select('*').order('created_at', { ascending: false }),
+        supabase.from('channels').select('*').order('created_at', { ascending: true }),
         supabase.from('videos').select('*').order('video_number', { ascending: true }),
         supabase.from('roles').select('*').order('created_at', { ascending: true }),
         supabase.from('role_prompts').select('*, roles(name), channels(name)').order('sort_order', { ascending: true }).then((r) => {
@@ -482,7 +597,23 @@ class SupabaseStore {
         this.handleSchemaError(chRes.error);
         return;
       }
-      this.state.channels = chRes.data || [];
+      const rawChannels = chRes.data || [];
+      const promptsData = promptsRes.data || [];
+
+      // Channel About / Description map from role_prompts
+      const channelAboutMap = new Map();
+      promptsData.forEach((p) => {
+        if (p.label === '__CHANNEL_ABOUT__' && p.channel_id) {
+          channelAboutMap.set(p.channel_id, p.prompt_text);
+        }
+      });
+
+      this.state.channels = rawChannels.map((c, idx) => ({
+        ...c,
+        channelNumber: idx + 1,
+        initials: getChannelInitials(c.name),
+        description: c.description || channelAboutMap.get(c.id) || ''
+      }));
 
       // Videos
       this.state.videos = (vidRes.data || []).map((v) => ({
@@ -505,24 +636,25 @@ class SupabaseStore {
         inputType: r.input_type === 'file' ? 'Attach File' : r.input_type === 'number' ? 'Number' : 'Text'
       }));
 
-      // Prompts
-      const promptsData = promptsRes.data || [];
-      this.state.prompts = promptsData.map((p) => {
-        const matchedChannel = p.channels?.name
-          ? p.channels.name
-          : p.channel_id
-          ? this.state.channels.find((c) => c.id === p.channel_id)?.name
-          : null;
+      // Filter out internal __CHANNEL_ABOUT__ entries from active prompts list
+      this.state.prompts = promptsData
+        .filter((p) => p.label !== '__CHANNEL_ABOUT__')
+        .map((p) => {
+          const matchedChannel = p.channels?.name
+            ? p.channels.name
+            : p.channel_id
+            ? this.state.channels.find((c) => c.id === p.channel_id)?.name
+            : null;
 
-        return {
-          id: p.id,
-          roleName: p.roles?.name || '',
-          channelId: p.channel_id || null,
-          channelName: matchedChannel || 'All Channels',
-          label: p.label || 'Prompt',
-          promptText: p.prompt_text
-        };
-      });
+          return {
+            id: p.id,
+            roleName: p.roles?.name || '',
+            channelId: p.channel_id || null,
+            channelName: matchedChannel || 'All Channels',
+            label: p.label || 'Prompt',
+            promptText: p.prompt_text
+          };
+        });
 
       // Submissions mapping (with full storage path resolution)
       this.state.submissions = subRes.data || [];
@@ -768,22 +900,57 @@ class SupabaseStore {
   }
 
   // --- Channel Operations ---
-  async addChannel(name) {
+  async addChannel(name, description = '') {
     const trimmed = name.trim();
     if (!trimmed) return false;
+    const trimmedDesc = (description || '').trim();
 
-    const { data, error } = await supabase
+    // 1. Try insert with description column
+    let { data, error } = await supabase
       .from('channels')
       .insert({
         name: trimmed,
+        description: trimmedDesc,
         created_by: this.state.currentUser?.id || null
       })
       .select()
       .single();
 
-    if (error) {
+    // If description column missing in schema, fallback to inserting without description column
+    if (error && (error.code === 'PGRST204' || error.message?.includes('description'))) {
+      const fallbackRes = await supabase
+        .from('channels')
+        .insert({
+          name: trimmed,
+          created_by: this.state.currentUser?.id || null
+        })
+        .select()
+        .single();
+      data = fallbackRes.data;
+      error = fallbackRes.error;
+    }
+
+    if (error || !data) {
       console.error('Add channel error:', error);
       return false;
+    }
+
+    // 2. Persist description in role_prompts (__CHANNEL_ABOUT__) for guaranteed persistence & realtime sync
+    if (trimmedDesc) {
+      const defaultRole = this.state.roles[0];
+      if (defaultRole?.id) {
+        try {
+          await supabase.from('role_prompts').insert({
+            channel_id: data.id,
+            role_id: defaultRole.id,
+            label: '__CHANNEL_ABOUT__',
+            prompt_text: trimmedDesc,
+            sort_order: 999
+          });
+        } catch (aboutErr) {
+          console.warn('Channel about prompt sync warning:', aboutErr);
+        }
+      }
     }
 
     await this.addLedgerEntry({
@@ -797,19 +964,63 @@ class SupabaseStore {
     return data;
   }
 
-  async editChannel(id, newName) {
+  async editChannel(id, newName, newDescription = '') {
     const trimmed = newName.trim();
     if (!trimmed) return false;
+    const trimmedDesc = typeof newDescription === 'string' ? newDescription.trim() : '';
 
-    const { error } = await supabase
+    // 1. Try update channels table
+    let { error } = await supabase
       .from('channels')
-      .update({ name: trimmed })
+      .update({ name: trimmed, description: trimmedDesc })
       .eq('id', id);
 
-    if (error) return false;
+    if (error && (error.code === 'PGRST204' || error.message?.includes('description'))) {
+      const fb = await supabase
+        .from('channels')
+        .update({ name: trimmed })
+        .eq('id', id);
+      error = fb.error;
+    }
+
+    if (error) {
+      console.error('Edit channel error:', error);
+      return false;
+    }
+
+    // 2. Sync to role_prompts (__CHANNEL_ABOUT__)
+    const defaultRole = this.state.roles[0];
+    if (defaultRole?.id) {
+      try {
+        const { data: existingAbout } = await supabase
+          .from('role_prompts')
+          .select('id')
+          .eq('channel_id', id)
+          .eq('label', '__CHANNEL_ABOUT__')
+          .maybeSingle();
+
+        if (existingAbout?.id) {
+          if (trimmedDesc) {
+            await supabase.from('role_prompts').update({ prompt_text: trimmedDesc }).eq('id', existingAbout.id);
+          } else {
+            await supabase.from('role_prompts').delete().eq('id', existingAbout.id);
+          }
+        } else if (trimmedDesc) {
+          await supabase.from('role_prompts').insert({
+            channel_id: id,
+            role_id: defaultRole.id,
+            label: '__CHANNEL_ABOUT__',
+            prompt_text: trimmedDesc,
+            sort_order: 999
+          });
+        }
+      } catch (aboutErr) {
+        console.warn('Channel about prompt update warning:', aboutErr);
+      }
+    }
 
     await this.addLedgerEntry({
-      action: `renamed channel to "${trimmed}"`,
+      action: `updated channel "${trimmed}"`,
       channelId: id,
       task: 'Channel Management',
       fileReference: trimmed
@@ -817,6 +1028,80 @@ class SupabaseStore {
 
     await this.refreshAll();
     return true;
+  }
+
+  getChannelAbout(channelId) {
+    if (!channelId) return '';
+    const chan = this.state.channels.find((c) => c.id === channelId);
+    return chan?.description || '';
+  }
+
+  // --- Account Credentials Update (Self-service for each account) ---
+  async updateMyCredentials({ username, password }) {
+    const current = this.state.currentUser;
+    if (!current) return { success: false, error: 'Not authenticated.' };
+
+    const trimmedUsername = (username || '').trim();
+    if (!trimmedUsername) {
+      return { success: false, error: 'Username cannot be empty.' };
+    }
+
+    const authUpdatePayload = {};
+    if (password && password.trim()) {
+      authUpdatePayload.password = password.trim();
+    }
+    if (trimmedUsername !== current.username) {
+      authUpdatePayload.data = { username: trimmedUsername };
+    }
+
+    // 1. Update Supabase Auth user
+    if (Object.keys(authUpdatePayload).length > 0) {
+      const { error: authErr } = await supabase.auth.updateUser(authUpdatePayload);
+      if (authErr) {
+        return { success: false, error: authErr.message };
+      }
+    }
+
+    // 2. Update profiles record
+    const profilePayload = {
+      username: trimmedUsername,
+      updated_at: new Date().toISOString()
+    };
+    if (password && password.trim()) {
+      profilePayload.password_text = password.trim();
+    }
+
+    let { error: profErr } = await supabase
+      .from('profiles')
+      .update(profilePayload)
+      .eq('id', current.id);
+
+    if (profErr && (profErr.code === 'PGRST204' || profErr.message?.includes('password_text'))) {
+      const fb = await supabase
+        .from('profiles')
+        .update({ username: trimmedUsername, updated_at: new Date().toISOString() })
+        .eq('id', current.id);
+      profErr = fb.error;
+    }
+
+    if (profErr) {
+      return { success: false, error: profErr.message };
+    }
+
+    // Update memory & localStorage
+    this.state.currentUser.username = trimmedUsername;
+    try {
+      localStorage.setItem('yta_active_user', JSON.stringify(this.state.currentUser));
+    } catch (e) {}
+
+    await this.addLedgerEntry({
+      action: 'updated account credentials',
+      task: 'Account Settings',
+      fileReference: trimmedUsername
+    });
+
+    await this.refreshAll();
+    return { success: true };
   }
 
   async deleteChannel(id) {
@@ -1238,14 +1523,36 @@ class SupabaseStore {
           updatePayload.password_text = newPassword;
         }
 
-        const { error: profErr } = await supabase
+        let { error: profErr } = await supabase
           .from('profiles')
           .update(updatePayload)
           .eq('id', item.id);
 
+        if (profErr && (profErr.code === 'PGRST204' || profErr.message?.includes('password_text'))) {
+          const fallbackProf = await supabase
+            .from('profiles')
+            .update({ username: newUsername, updated_at: new Date().toISOString() })
+            .eq('id', item.id);
+          profErr = fallbackProf.error;
+        }
+
         if (profErr) {
           errors.push(`Failed to update credentials for "${current.username}": ${profErr.message}`);
         } else {
+          // If editing self, update active Supabase Auth user session directly
+          if (item.id === this.state.currentUser?.id) {
+            const selfPayload = {};
+            if (newPassword) selfPayload.password = newPassword;
+            if (newUsername !== this.state.currentUser.username) selfPayload.data = { username: newUsername };
+            if (Object.keys(selfPayload).length > 0) {
+              try {
+                await supabase.auth.updateUser(selfPayload);
+              } catch (selfAuthErr) {
+                console.warn('Self auth update notice:', selfAuthErr);
+              }
+            }
+          }
+
           // Attempt RPC to sync auth.users
           try {
             await supabase.rpc('admin_update_user_credentials', {
