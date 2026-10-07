@@ -14,7 +14,7 @@ Unified multi-platform backend powered by **Supabase** for both the Web applicat
   - **Team Member Interface**: Contextual task workspace scoped strictly to assigned roles (Script, Voiceover, Thumbnail, Meta Info, custom), with compact scrollable prompts, on-page submission status, and atomic overwrite protection. The video picker marks submitted Thumbnail (T), Description (D), Voiceover (V), and Script (S) work only for roles assigned to the signed-in member.
 - **Real-Time Supabase Database**:
   - Live synchronization across sessions using Supabase Realtime WebSocket publications (`supabase_realtime`).
-  - Storage bucket integration for media assets (`thumbnails` and `voiceovers`).
+  - Storage bucket integration for media assets (`thumbnails` in Supabase Storage and `voiceovers` in Cloudflare R2).
   - Append-only immutable shared audit ledger.
   - Strict Row Level Security (RLS) policies on all tables.
 
@@ -24,7 +24,7 @@ Unified multi-platform backend powered by **Supabase** for both the Web applicat
 
 - **Frontend**: Vanilla JavaScript (ES6 Modules), HTML5, CSS3 Custom Properties Design System.
 - **Build Tool**: [Vite](https://vitejs.dev/)
-- **Backend**: [Supabase](https://supabase.com/) (PostgreSQL, Supabase Auth, Supabase Storage, Supabase Realtime).
+- **Backend & Database**: [Supabase](https://supabase.com/) (PostgreSQL, Supabase Auth, Realtime) & [Cloudflare R2](https://www.cloudflare.com/developer-platform/products/r2/) (Audio voiceover storage with S3 Presigned URLs).
 
 ---
 

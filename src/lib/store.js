@@ -4,7 +4,9 @@
 // Unified for Web (Vercel) and Android (Native/Flutter)
 // ==============================================================================
 
-import { supabase, supabaseAuthHelper, uploadStorageFile } from './supabase.js';
+import { supabase, supabaseAuthHelper, uploadStorageFile, uploadAudioToR2 } from './supabase.js';
+
+export { uploadAudioToR2 };
 
 // Helper to parse Supabase bucket and path from various URL structures or storage paths
 export function parseSupabaseStorageUrl(url) {
@@ -174,10 +176,19 @@ export async function downloadFileSecurely(url, filename = 'download') {
       return;
     }
 
+    let safeFilename = filename;
+    if (safeFilename === 'download' || !safeFilename.includes('.')) {
+      const cleanUrl = url.split('?')[0].split('#')[0];
+      const ext = cleanUrl.split('.').pop()?.toLowerCase();
+      if (ext && ext !== cleanUrl && ext.length <= 5) {
+        safeFilename = safeFilename === 'download' ? `voiceover.${ext}` : `${safeFilename}.${ext}`;
+      }
+    }
+
     const blobUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = blobUrl;
-    a.download = filename;
+    a.download = safeFilename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
