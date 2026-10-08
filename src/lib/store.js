@@ -5,8 +5,9 @@
 // ==============================================================================
 
 import { supabase, supabaseAuthHelper, uploadStorageFile, uploadAudioToR2 } from './supabase.js';
+import JSZip from 'jszip';
 
-export { uploadAudioToR2 };
+export { uploadAudioToR2, JSZip };
 
 // Helper to parse Supabase bucket and path from various URL structures or storage paths
 export function parseSupabaseStorageUrl(url) {
@@ -55,6 +56,305 @@ export function parseSupabaseStorageUrl(url) {
   }
 
   return null;
+}
+
+// Fetch a file from Supabase storage or an external URL as a binary Blob
+export async function fetchFileBlob(url) {
+  if (!url || url === '#' || url === 'undefined') return null;
+
+  // 1. Direct in-memory blob
+  if (url.startsWith('blob:')) {
+    try {
+      const res = await fetch(url);
+      if (res.ok) {
+        const b = await res.blob();
+        if (b && b.size > 0) return b;
+      }
+    } catch (e) {
+      console.warn('Blob fetch error:', e);
+    }
+    return null;
+  }
+
+  // 2. Supabase Storage download
+  const storageInfo = parseSupabaseStorageUrl(url);
+  if (storageInfo) {
+    const { bucket, path } = storageInfo;
+    try {
+      let { data, error } = await supabase.storage.from(bucket).download(path);
+      if (error && !path.startsWith(`${bucket}/`)) {
+        const retryRes = await supabase.storage.from(bucket).download(`${bucket}/${path}`);
+        if (!retryRes.error && retryRes.data) {
+          data = retryRes.data;
+          error = null;
+        }
+      }
+      if (!error && data && data.size > 0) {
+        return data;
+      }
+    } catch (storageErr) {
+      console.warn(`Supabase storage fetch failed for bucket "${bucket}", path "${path}":`, storageErr);
+    }
+  }
+
+  // 3. Fallback direct HTTP fetch
+  try {
+    const res = await fetch(url);
+    if (res.ok) {
+      const b = await res.blob();
+      if (b && b.size > 0) return b;
+    }
+  } catch (netErr) {
+    console.warn('HTTP fetch failed for URL:', url, netErr);
+  }
+
+  return null;
+}
+
+// Inspect a video and return all attached database data (voiceover, thumbnail, script, desc/meta, submissions)
+export function getVideoDataSummary(video, allSubmissions = []) {
+  if (!video) return { hasData: false, items: [], summaryText: '' };
+
+  const subs = (allSubmissions || []).filter((s) => s.video_id === video.id);
+  const items = [];
+
+  // 1. Voiceover
+  if (video.voiceover && video.voiceover.name && video.voiceover.name !== 'undefined') {
+    items.push({
+      type: 'voiceover',
+      label: 'Voiceover',
+      filename: video.voiceover.name,
+      url: video.voiceover.url
+    });
+  } else {
+    const voSub = subs.find(
+      (s) =>
+        s.roles?.name?.toLowerCase().includes('voice') ||
+        (s.file_path && s.file_path.includes('voiceovers'))
+    );
+    if (voSub && (voSub.file_name || voSub.file_path)) {
+      items.push({
+        type: 'voiceover',
+        label: 'Voiceover',
+        filename: voSub.file_name || 'voiceover.mp3',
+        url: voSub.file_path
+      });
+    }
+  }
+
+  // 2. Thumbnail
+  if (video.thumbnail && video.thumbnail.name && video.thumbnail.name !== 'undefined') {
+    items.push({
+      type: 'thumbnail',
+      label: 'Thumbnail',
+      filename: video.thumbnail.name,
+      url: video.thumbnail.url
+    });
+  } else {
+    const thumbSub = subs.find(
+      (s) =>
+        s.roles?.name?.toLowerCase().includes('thumb') ||
+        (s.file_path && s.file_path.includes('thumbnails'))
+    );
+    if (thumbSub && (thumbSub.file_name || thumbSub.file_path)) {
+      items.push({
+        type: 'thumbnail',
+        label: 'Thumbnail',
+        filename: thumbSub.file_name || 'thumbnail.png',
+        url: thumbSub.file_path
+      });
+    }
+  }
+
+  // 3. Script
+  if (video.script && video.script.trim()) {
+    items.push({
+      type: 'script',
+      label: 'Script',
+      content: video.script.trim()
+    });
+  } else {
+    const scriptSub = subs.find(
+      (s) => s.roles?.name?.toLowerCase().includes('script') && s.content_text
+    );
+    if (scriptSub && scriptSub.content_text?.trim()) {
+      items.push({
+        type: 'script',
+        label: 'Script',
+        content: scriptSub.content_text.trim()
+      });
+    }
+  }
+
+  // 4. Meta Info / Description
+  if (video.metaInfo && video.metaInfo.trim()) {
+    items.push({
+      type: 'metaInfo',
+      label: 'Description / Meta Info',
+      content: video.metaInfo.trim()
+    });
+  } else {
+    const metaSub = subs.find(
+      (s) => s.roles?.name?.toLowerCase().includes('meta') && s.content_text
+    );
+    if (metaSub && metaSub.content_text?.trim()) {
+      items.push({
+        type: 'metaInfo',
+        label: 'Description / Meta Info',
+        content: metaSub.content_text.trim()
+      });
+    }
+  }
+
+  // 5. Custom role fields / other submissions
+  if (video.customFields) {
+    for (const [key, val] of Object.entries(video.customFields)) {
+      if (!val) continue;
+      if (typeof val === 'object' && val.url) {
+        if (!items.some((i) => i.url === val.url)) {
+          items.push({
+            type: 'custom_file',
+            label: key,
+            filename: val.name || key,
+            url: val.url
+          });
+        }
+      } else if (typeof val === 'string' && val.trim()) {
+        if (!items.some((i) => i.label === key)) {
+          items.push({
+            type: 'custom_text',
+            label: key,
+            content: val.trim()
+          });
+        }
+      }
+    }
+  }
+
+  // Check any remaining submissions not caught
+  subs.forEach((s) => {
+    const roleName = s.roles?.name || 'Attachment';
+    if (s.file_path && !items.some((i) => i.url === s.file_path)) {
+      items.push({
+        type: 'file',
+        label: roleName,
+        filename: s.file_name || roleName,
+        url: s.file_path
+      });
+    }
+    if (s.content_text && s.content_text.trim() && !items.some((i) => i.content === s.content_text.trim())) {
+      items.push({
+        type: 'text',
+        label: roleName,
+        content: s.content_text.trim()
+      });
+    }
+  });
+
+  const summaryText = items
+    .map((i) => `${i.label}${i.filename ? ` (${i.filename})` : ''}`)
+    .join(', ');
+
+  return {
+    hasData: items.length > 0,
+    items,
+    summaryText
+  };
+}
+
+// Downloads a comprehensive ZIP package of all selected videos with their data
+export async function downloadVideosDataBackup(channelName, videos, allSubmissions = []) {
+  const zip = new JSZip();
+  let filesCount = 0;
+
+  for (const video of videos) {
+    const summary = getVideoDataSummary(video, allSubmissions);
+    const safeTitle = (video.title || `video_${video.videoNumber}`)
+      .replace(/[\\/:*?"<>|]/g, '_')
+      .trim()
+      .slice(0, 50);
+    const folderName = `Video_${video.videoNumber}_${safeTitle || 'untitled'}`;
+    const folder = zip.folder(folderName);
+
+    const manifest = {
+      channel: channelName,
+      videoNumber: video.videoNumber,
+      title: video.title,
+      items: []
+    };
+
+    // Text data: Script
+    if (video.script && video.script.trim()) {
+      folder.file('script.txt', video.script.trim());
+      manifest.items.push({ type: 'script', textLength: video.script.trim().length });
+      filesCount++;
+    }
+
+    // Text data: Description / Meta Info
+    if (video.metaInfo && video.metaInfo.trim()) {
+      folder.file('description_and_metadata.txt', video.metaInfo.trim());
+      manifest.items.push({ type: 'metaInfo', textLength: video.metaInfo.trim().length });
+      filesCount++;
+    }
+
+    // Summary items (voiceover, thumbnail, custom attachments)
+    for (const item of summary.items) {
+      if (item.type === 'script' || item.type === 'metaInfo') continue;
+
+      if (item.content && typeof item.content === 'string') {
+        const safeName = (item.label || 'custom_content').replace(/[\\/:*?"<>|]/g, '_');
+        folder.file(`${safeName}.txt`, item.content);
+        manifest.items.push({ label: item.label, type: 'text' });
+        filesCount++;
+      } else if (item.url && item.url !== '#') {
+        try {
+          const blob = await fetchFileBlob(item.url);
+          if (blob && blob.size > 0) {
+            let filename = item.filename || `${item.type}_file`;
+            filename = filename.replace(/[\\/:*?"<>|]/g, '_');
+            folder.file(filename, blob);
+            manifest.items.push({ label: item.label, type: 'file', filename, sizeBytes: blob.size });
+            filesCount++;
+          }
+        } catch (e) {
+          console.warn(`Failed to package ${item.label} for Video ${video.videoNumber}:`, e);
+          manifest.items.push({ label: item.label, type: 'file_failed', error: String(e) });
+        }
+      }
+    }
+
+    folder.file('video_info.json', JSON.stringify(manifest, null, 2));
+  }
+
+  // Top level channel summary
+  const channelManifest = {
+    channel: channelName,
+    exportedAt: new Date().toISOString(),
+    totalVideos: videos.length,
+    videos: videos.map((v) => ({
+      videoNumber: v.videoNumber,
+      title: v.title,
+      hasData: getVideoDataSummary(v, allSubmissions).hasData
+    }))
+  };
+  zip.file('channel_summary.json', JSON.stringify(channelManifest, null, 2));
+
+  const cleanChanName = (channelName || 'channel').replace(/[\\/:*?"<>|]/g, '_');
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const zipBlob = await zip.generateAsync({ type: 'blob' });
+
+  const downloadUrl = URL.createObjectURL(zipBlob);
+  const a = document.createElement('a');
+  a.href = downloadUrl;
+  a.download = `${cleanChanName}_deleted_videos_data_${dateStr}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => {
+    try { URL.revokeObjectURL(downloadUrl); } catch (e) {}
+  }, 2000);
+
+  return { success: true, filesCount };
 }
 
 // Secure in-browser file download helper with explicit error handling and delayed revoke
@@ -1182,6 +1482,109 @@ class SupabaseStore {
         title: d.title
       }))
     };
+  }
+
+  // --- Edit Video Title ---
+  async updateVideoTitle(videoId, newTitle) {
+    const trimmed = (newTitle || '').trim();
+    if (!trimmed) {
+      return { success: false, error: 'Title cannot be empty.' };
+    }
+
+    const vid = this.state.videos.find((v) => v.id === videoId);
+    if (!vid) {
+      return { success: false, error: 'Video not found.' };
+    }
+
+    const oldTitle = vid.title;
+    vid.title = trimmed;
+    this.notifySubscribers();
+
+    const { error } = await supabase
+      .from('videos')
+      .update({ title: trimmed, updated_at: new Date().toISOString() })
+      .eq('id', videoId);
+
+    if (error) {
+      vid.title = oldTitle;
+      this.notifySubscribers();
+      return { success: false, error: error.message };
+    }
+
+    await this.addLedgerEntry({
+      action: `updated title for Video ${vid.videoNumber}`,
+      channelId: vid.channelId,
+      videoId: vid.id,
+      task: 'Titles Management',
+      fileReference: `"${trimmed}" (was: "${oldTitle}")`
+    });
+
+    return { success: true, title: trimmed };
+  }
+
+  // --- Delete Videos (Single, Specific, or All) ---
+  async deleteVideos(videoIds, channelId = null) {
+    if (!videoIds || !Array.isArray(videoIds) || videoIds.length === 0) {
+      return { success: false, error: 'No videos specified for deletion.' };
+    }
+
+    const targetVideos = this.state.videos.filter((v) => videoIds.includes(v.id));
+    const effectiveChannelId = channelId || targetVideos[0]?.channelId || null;
+    const chan = this.state.channels.find((c) => c.id === effectiveChannelId);
+
+    // 1. Delete associated storage files from Supabase buckets
+    const targetSubs = this.state.submissions.filter((s) => videoIds.includes(s.video_id));
+    for (const sub of targetSubs) {
+      if (sub.file_path && sub.file_path !== '#') {
+        const storageInfo = parseSupabaseStorageUrl(sub.file_path);
+        if (storageInfo) {
+          try {
+            await supabase.storage.from(storageInfo.bucket).remove([storageInfo.path]);
+          } catch (storageErr) {
+            console.warn('[Storage delete warning]:', storageErr);
+          }
+        }
+      }
+    }
+
+    // 2. Clean up notifications referencing these videos
+    try {
+      await supabase.from('notifications').delete().in('related_video_id', videoIds);
+    } catch (notifErr) {
+      console.warn('[Notifications delete warning]:', notifErr);
+    }
+
+    // 3. Clean up submissions explicitly (ensures removal even without DB cascade)
+    try {
+      await supabase.from('submissions').delete().in('video_id', videoIds);
+    } catch (subErr) {
+      console.warn('[Submissions delete warning]:', subErr);
+    }
+
+    // 4. Delete from videos table
+    const { error } = await supabase.from('videos').delete().in('id', videoIds);
+    if (error) {
+      console.error('[Delete videos DB error]:', error);
+      return { success: false, error: error.message };
+    }
+
+    // 5. In-memory optimistic update
+    this.state.videos = this.state.videos.filter((v) => !videoIds.includes(v.id));
+    this.state.submissions = this.state.submissions.filter((s) => !videoIds.includes(s.video_id));
+    this.notifySubscribers();
+
+    // 6. Ledger audit entry
+    await this.addLedgerEntry({
+      action: `deleted ${videoIds.length} video title(s) from "${chan?.name || 'Channel'}"`,
+      channelId: effectiveChannelId,
+      task: 'Titles Management',
+      fileReference: `${videoIds.length} title(s) deleted: ${targetVideos.map((v) => `#${v.videoNumber}`).slice(0, 5).join(', ')}${targetVideos.length > 5 ? '...' : ''}`
+    });
+
+    // 7. Background refresh
+    await this.refreshAll();
+
+    return { success: true, count: videoIds.length };
   }
 
   // --- Roles & Prompts ---
