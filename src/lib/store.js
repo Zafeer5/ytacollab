@@ -4,7 +4,7 @@
 // Unified for Web (Vercel) and Android (Native/Flutter)
 // ==============================================================================
 
-import { supabase, supabaseAuthHelper, uploadStorageFile, uploadAudioToR2 } from './supabase.js';
+import { supabase, supabaseAuthHelper, createIsolatedAuthClient, TOMBSTONE_PASS, uploadStorageFile, uploadAudioToR2 } from './supabase.js';
 import JSZip from 'jszip';
 
 export { uploadAudioToR2, JSZip };
@@ -1789,14 +1789,16 @@ class SupabaseStore {
 
   // --- Team Members & Roles Assignment ---
   async addTeamMember(username, password, assignedRoles = [], isAdmin = false, isOwner = false) {
-    const trimmed = username.trim();
+    const trimmed = (username || '').trim();
     if (!trimmed || !password) return { success: false, error: 'Username and password required.' };
 
     const effectiveIsOwner = Boolean(isOwner || trimmed.toLowerCase() === 'owner');
     const effectiveIsAdmin = Boolean(isAdmin || effectiveIsOwner);
     const email = `${trimmed.toLowerCase()}@colab.yta`;
 
-    // Sign up via Supabase Auth Helper (does not touch active admin session)
+    let memberId = null;
+
+    // 1. Sign up via Supabase Auth Helper
     const { data: authData, error: authError } = await supabaseAuthHelper.auth.signUp({
       email,
       password,
@@ -1804,28 +1806,74 @@ class SupabaseStore {
         data: {
           username: trimmed,
           is_admin: effectiveIsAdmin,
-          is_owner: effectiveIsOwner,
           password_text: password
         }
       }
     });
 
     if (authError) {
-      return { success: false, error: authError.message };
+      // Check if user already exists in Supabase auth.users
+      if (authError.message?.toLowerCase().includes('already registered') || authError.status === 422) {
+        // If an active member profile with this username exists, disallow duplicate
+        const activeProfile = this.state.teamMembers.find(
+          (m) => m.username?.toLowerCase() === trimmed.toLowerCase()
+        );
+        if (activeProfile) {
+          return { success: false, error: `A team member with username "${trimmed}" already exists.` };
+        }
+
+        // Previous account was deleted! Re-claim the existing auth.users record
+        let reclaimed = false;
+        const claimClient = createIsolatedAuthClient();
+        const candidatePasswords = [TOMBSTONE_PASS, password];
+
+        for (const candidate of candidatePasswords) {
+          try {
+            const { data: claimAuth, error: claimErr } = await claimClient.auth.signInWithPassword({
+              email,
+              password: candidate
+            });
+            if (!claimErr && claimAuth?.user) {
+              memberId = claimAuth.user.id;
+              await claimClient.auth.updateUser({
+                password,
+                data: {
+                  username: trimmed,
+                  is_admin: effectiveIsAdmin,
+                  password_text: password
+                }
+              });
+              reclaimed = true;
+              break;
+            }
+          } catch (e) {}
+        }
+
+        if (!reclaimed) {
+          return {
+            success: false,
+            error: `User "${trimmed}" already exists in Supabase Auth. Please select another username.`
+          };
+        }
+      } else {
+        return { success: false, error: authError.message };
+      }
+    } else {
+      memberId = authData.user?.id;
     }
 
-    const memberId = authData.user?.id;
+    // 2. Ensure profile is upserted into public.profiles
     if (memberId) {
-      // Ensure profiles record has password_text, is_owner, and is_admin
       try {
-        await supabase.from('profiles').update({
+        await supabase.from('profiles').upsert({
+          id: memberId,
           username: trimmed,
           is_admin: effectiveIsAdmin,
-          is_owner: effectiveIsOwner,
-          password_text: password
-        }).eq('id', memberId);
+          password_text: password,
+          updated_at: new Date().toISOString()
+        });
       } catch (pErr) {
-        console.warn('Profile direct update warning:', pErr);
+        console.warn('Profile direct upsert warning:', pErr);
       }
 
       if (!effectiveIsAdmin && !effectiveIsOwner && assignedRoles.length > 0) {
@@ -1882,28 +1930,136 @@ class SupabaseStore {
     return true;
   }
 
+  // Single Team Member / Admin Credential & Role Update
+  async updateTeamMember(id, { username, password, roles }) {
+    const current = this.state.teamMembers.find((m) => m.id === id);
+    if (!current) return { success: false, error: 'User not found.' };
+
+    const newUsername = (username !== undefined ? username : current.username).trim();
+    if (!newUsername) return { success: false, error: 'Username cannot be empty.' };
+
+    const hasNewPassword = Boolean(password && typeof password === 'string' && password.trim().length > 0);
+    const newPassword = hasNewPassword ? password.trim() : current.password;
+    const usernameChanged = newUsername !== current.username;
+    const passwordChanged = hasNewPassword;
+    const rolesChanged = !current.isAdmin && !current.isOwner && roles !== undefined && (
+      roles.length !== current.roles.length ||
+      !roles.every((r) => current.roles.includes(r))
+    );
+
+    // 1. Update Supabase Auth if credentials changed
+    if (usernameChanged || passwordChanged) {
+      if (id === this.state.currentUser?.id) {
+        // Active session user
+        const selfPayload = {};
+        if (passwordChanged) selfPayload.password = newPassword;
+        if (usernameChanged) selfPayload.data = { username: newUsername };
+        try {
+          await supabase.auth.updateUser(selfPayload);
+        } catch (selfAuthErr) {
+          console.warn('Self auth update notice:', selfAuthErr);
+        }
+      } else {
+        // Other user: sign in with isolated client and update auth user directly
+        try {
+          const authHelper = createIsolatedAuthClient();
+          const { error: inErr } = await authHelper.auth.signInWithPassword({
+            email: `${current.username.toLowerCase()}@colab.yta`,
+            password: current.password
+          });
+          if (!inErr) {
+            const userUpdate = {};
+            if (passwordChanged) userUpdate.password = newPassword;
+            if (usernameChanged) userUpdate.data = { username: newUsername };
+            await authHelper.auth.updateUser(userUpdate);
+          }
+        } catch (authErr) {
+          console.warn('Isolated auth user update notice:', authErr);
+        }
+      }
+
+      // Supplementary RPC call if installed
+      try {
+        await supabase.rpc('admin_update_user_credentials', {
+          target_user_id: id,
+          new_username: newUsername,
+          new_password: passwordChanged ? newPassword : ''
+        });
+      } catch (rpcErr) {
+        console.warn('Credentials RPC update notice:', rpcErr);
+      }
+
+      // Update public.profiles table
+      const updatePayload = {
+        username: newUsername,
+        updated_at: new Date().toISOString()
+      };
+      if (passwordChanged) {
+        updatePayload.password_text = newPassword;
+      }
+
+      let { error: profErr } = await supabase
+        .from('profiles')
+        .update(updatePayload)
+        .eq('id', id);
+
+      if (profErr) {
+        return { success: false, error: profErr.message };
+      }
+    }
+
+    // 2. Update roles for normal team members
+    if (rolesChanged && !current.isAdmin && !current.isOwner) {
+      await this.assignMemberRoles(id, roles);
+    }
+
+    await this.addLedgerEntry({
+      action: `updated credentials for "${newUsername}"`,
+      task: 'Account Management',
+      fileReference: `Username: ${newUsername}${passwordChanged ? ', Password updated' : ''}`
+    });
+
+    await this.refreshAll();
+    return { success: true };
+  }
+
   async deleteTeamMember(id) {
     const member = this.state.teamMembers.find((m) => m.id === id);
     if (member?.isOwner) {
       return { success: false, error: 'Owner account cannot be deleted.' };
     }
 
-    let deleted = false;
+    let deletedViaRpc = false;
     // 1. Try RPC admin_delete_user if available
     try {
       const { error: rpcErr } = await supabase.rpc('admin_delete_user', { target_user_id: id });
       if (!rpcErr) {
-        deleted = true;
+        deletedViaRpc = true;
       }
     } catch (e) {
-      // RPC not configured, fallback to profiles table delete
+      // RPC not configured, fallback to tombstone and profiles table delete
     }
 
-    // 2. Direct profiles delete
-    if (!deleted) {
-      const { error } = await supabase.from('profiles').delete().eq('id', id);
-      if (error) return { success: false, error: error.message };
+    // 2. If not deleted via RPC, set tombstone password on auth user so it can be re-claimed seamlessly
+    if (!deletedViaRpc && member?.username && member?.password) {
+      try {
+        const authHelper = createIsolatedAuthClient();
+        const { error: inErr } = await authHelper.auth.signInWithPassword({
+          email: `${member.username.toLowerCase()}@colab.yta`,
+          password: member.password
+        });
+        if (!inErr) {
+          await authHelper.auth.updateUser({ password: TOMBSTONE_PASS });
+        }
+      } catch (tombErr) {
+        console.warn('Tombstone auth notice:', tombErr);
+      }
     }
+
+    // 3. Direct profiles delete
+    // Note: Video submissions have submitted_by set to null, preserving all video scripts, files, and meta info!
+    const { error } = await supabase.from('profiles').delete().eq('id', id);
+    if (error) return { success: false, error: error.message };
 
     await this.addLedgerEntry({
       action: `deleted member account "${member?.username || id}"`,
@@ -1922,116 +2078,26 @@ class SupabaseStore {
 
     // 1. Process deletions
     for (const id of deletedIds) {
-      const member = this.state.teamMembers.find((m) => m.id === id);
-      if (member?.isOwner) {
-        errors.push(`The Owner account (${member.username}) cannot be deleted.`);
-        continue;
-      }
-
-      let deleted = false;
-      try {
-        const { error: rpcErr } = await supabase.rpc('admin_delete_user', { target_user_id: id });
-        if (!rpcErr) deleted = true;
-      } catch (e) {}
-
-      if (!deleted) {
-        const { error } = await supabase.from('profiles').delete().eq('id', id);
-        if (error) {
-          errors.push(`Failed to delete "${member?.username || id}": ${error.message}`);
-        } else {
-          savedActions.push(`deleted ${member?.username || id}`);
-        }
+      const res = await this.deleteTeamMember(id);
+      if (!res.success) {
+        errors.push(res.error);
       } else {
-        savedActions.push(`deleted ${member?.username || id}`);
+        savedActions.push(`deleted ${id}`);
       }
     }
 
     // 2. Process modified credentials and roles
     for (const item of modified) {
-      const current = this.state.teamMembers.find((m) => m.id === item.id);
-      if (!current) continue;
-
-      const newUsername = (item.username || current.username).trim();
-      const hasNewPassword = Boolean(item.password && typeof item.password === 'string' && item.password.trim().length > 0);
-      const newPassword = hasNewPassword ? item.password.trim() : '';
-      const usernameChanged = Boolean(newUsername && newUsername !== current.username);
-      const passwordChanged = hasNewPassword;
-      const rolesChanged = !current.isAdmin && !current.isOwner && item.roles && (
-        item.roles.length !== current.roles.length ||
-        !item.roles.every((r) => current.roles.includes(r))
-      );
-
-      // Save credential updates
-      if (usernameChanged || passwordChanged) {
-        const updatePayload = {
-          updated_at: new Date().toISOString()
-        };
-        if (usernameChanged) {
-          updatePayload.username = newUsername;
-        }
-        if (passwordChanged) {
-          updatePayload.password_text = newPassword;
-        }
-
-        let { error: profErr } = await supabase
-          .from('profiles')
-          .update(updatePayload)
-          .eq('id', item.id);
-
-        if (profErr && (profErr.code === 'PGRST204' || profErr.message?.includes('password_text'))) {
-          const fallbackPayload = { updated_at: new Date().toISOString() };
-          if (usernameChanged) fallbackPayload.username = newUsername;
-          const fallbackProf = await supabase
-            .from('profiles')
-            .update(fallbackPayload)
-            .eq('id', item.id);
-          profErr = fallbackProf.error;
-        }
-
-        if (profErr) {
-          errors.push(`Failed to update credentials for "${current.username}": ${profErr.message}`);
-        } else {
-          // If editing self, update active Supabase Auth user session directly
-          if (item.id === this.state.currentUser?.id) {
-            const selfPayload = {};
-            if (passwordChanged) selfPayload.password = newPassword;
-            if (usernameChanged) selfPayload.data = { username: newUsername };
-            if (Object.keys(selfPayload).length > 0) {
-              try {
-                await supabase.auth.updateUser(selfPayload);
-              } catch (selfAuthErr) {
-                console.warn('Self auth update notice:', selfAuthErr);
-              }
-            }
-          }
-
-          // Attempt RPC to sync auth.users
-          try {
-            await supabase.rpc('admin_update_user_credentials', {
-              target_user_id: item.id,
-              new_username: newUsername,
-              new_password: passwordChanged ? newPassword : ''
-            });
-          } catch (rpcErr) {
-            console.warn('Credentials RPC update notice:', rpcErr);
-          }
-          savedActions.push(`updated credentials for ${newUsername}`);
-        }
-      }
-
-      // Save roles updates for team members (skip admin/owner)
-      if (rolesChanged && !current.isAdmin && !current.isOwner) {
-        await this.assignMemberRoles(item.id, item.roles);
-        savedActions.push(`updated roles for ${newUsername}`);
-      }
-    }
-
-    if (savedActions.length > 0) {
-      await this.addLedgerEntry({
-        action: `saved batch team updates (${savedActions.length} item${savedActions.length > 1 ? 's' : ''})`,
-        task: 'Team Member Management',
-        fileReference: savedActions.slice(0, 3).join(', ')
+      const res = await this.updateTeamMember(item.id, {
+        username: item.username,
+        password: item.password,
+        roles: item.roles
       });
+      if (!res.success) {
+        errors.push(res.error);
+      } else {
+        savedActions.push(`updated ${item.username || item.id}`);
+      }
     }
 
     await this.refreshAll();

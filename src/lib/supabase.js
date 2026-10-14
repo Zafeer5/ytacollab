@@ -25,6 +25,18 @@ export const supabaseAuthHelper = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, 
   }
 });
 
+export const TOMBSTONE_PASS = 'YTA_Deleted_Tombstone_999!';
+
+export function createIsolatedAuthClient() {
+  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    }
+  });
+}
+
 /**
  * Cloudflare R2 Audio Upload Helper
  * 1. Requests S3 presigned PUT URL from backend endpoint (/api/r2-presign)
