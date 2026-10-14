@@ -1887,8 +1887,30 @@ class SupabaseStore {
     if (member?.isOwner) {
       return { success: false, error: 'Owner account cannot be deleted.' };
     }
-    const { error } = await supabase.from('profiles').delete().eq('id', id);
-    if (error) return { success: false, error: error.message };
+
+    let deleted = false;
+    // 1. Try RPC admin_delete_user if available
+    try {
+      const { error: rpcErr } = await supabase.rpc('admin_delete_user', { target_user_id: id });
+      if (!rpcErr) {
+        deleted = true;
+      }
+    } catch (e) {
+      // RPC not configured, fallback to profiles table delete
+    }
+
+    // 2. Direct profiles delete
+    if (!deleted) {
+      const { error } = await supabase.from('profiles').delete().eq('id', id);
+      if (error) return { success: false, error: error.message };
+    }
+
+    await this.addLedgerEntry({
+      action: `deleted member account "${member?.username || id}"`,
+      task: 'Account Management',
+      fileReference: member?.username || id
+    });
+
     await this.refreshAll();
     return { success: true };
   }
@@ -1906,9 +1928,19 @@ class SupabaseStore {
         continue;
       }
 
-      const { error } = await supabase.from('profiles').delete().eq('id', id);
-      if (error) {
-        errors.push(`Failed to delete "${member?.username || id}": ${error.message}`);
+      let deleted = false;
+      try {
+        const { error: rpcErr } = await supabase.rpc('admin_delete_user', { target_user_id: id });
+        if (!rpcErr) deleted = true;
+      } catch (e) {}
+
+      if (!deleted) {
+        const { error } = await supabase.from('profiles').delete().eq('id', id);
+        if (error) {
+          errors.push(`Failed to delete "${member?.username || id}": ${error.message}`);
+        } else {
+          savedActions.push(`deleted ${member?.username || id}`);
+        }
       } else {
         savedActions.push(`deleted ${member?.username || id}`);
       }
@@ -1920,9 +1952,10 @@ class SupabaseStore {
       if (!current) continue;
 
       const newUsername = (item.username || current.username).trim();
-      const newPassword = item.password !== undefined ? item.password : current.password;
-      const usernameChanged = newUsername !== current.username;
-      const passwordChanged = newPassword !== current.password;
+      const hasNewPassword = Boolean(item.password && typeof item.password === 'string' && item.password.trim().length > 0);
+      const newPassword = hasNewPassword ? item.password.trim() : '';
+      const usernameChanged = Boolean(newUsername && newUsername !== current.username);
+      const passwordChanged = hasNewPassword;
       const rolesChanged = !current.isAdmin && !current.isOwner && item.roles && (
         item.roles.length !== current.roles.length ||
         !item.roles.every((r) => current.roles.includes(r))
@@ -1931,10 +1964,12 @@ class SupabaseStore {
       // Save credential updates
       if (usernameChanged || passwordChanged) {
         const updatePayload = {
-          username: newUsername,
           updated_at: new Date().toISOString()
         };
-        if (newPassword) {
+        if (usernameChanged) {
+          updatePayload.username = newUsername;
+        }
+        if (passwordChanged) {
           updatePayload.password_text = newPassword;
         }
 
@@ -1944,9 +1979,11 @@ class SupabaseStore {
           .eq('id', item.id);
 
         if (profErr && (profErr.code === 'PGRST204' || profErr.message?.includes('password_text'))) {
+          const fallbackPayload = { updated_at: new Date().toISOString() };
+          if (usernameChanged) fallbackPayload.username = newUsername;
           const fallbackProf = await supabase
             .from('profiles')
-            .update({ username: newUsername, updated_at: new Date().toISOString() })
+            .update(fallbackPayload)
             .eq('id', item.id);
           profErr = fallbackProf.error;
         }
@@ -1957,8 +1994,8 @@ class SupabaseStore {
           // If editing self, update active Supabase Auth user session directly
           if (item.id === this.state.currentUser?.id) {
             const selfPayload = {};
-            if (newPassword) selfPayload.password = newPassword;
-            if (newUsername !== this.state.currentUser.username) selfPayload.data = { username: newUsername };
+            if (passwordChanged) selfPayload.password = newPassword;
+            if (usernameChanged) selfPayload.data = { username: newUsername };
             if (Object.keys(selfPayload).length > 0) {
               try {
                 await supabase.auth.updateUser(selfPayload);
@@ -1973,7 +2010,7 @@ class SupabaseStore {
             await supabase.rpc('admin_update_user_credentials', {
               target_user_id: item.id,
               new_username: newUsername,
-              new_password: newPassword || ''
+              new_password: passwordChanged ? newPassword : ''
             });
           } catch (rpcErr) {
             console.warn('Credentials RPC update notice:', rpcErr);

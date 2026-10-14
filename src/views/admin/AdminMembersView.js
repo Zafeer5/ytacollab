@@ -1,19 +1,20 @@
 import { store } from '../../lib/store.js';
+import { showToast } from '../../components/Toast.js';
+import { showConfirmModal } from '../../components/ConfirmModal.js';
 
 // Module-level staged edits so store updates/refreshes do not erase in-progress changes
-let stagedEdits = {}; // id -> { username, password, roles, isDeleted }
+let stagedEdits = {}; // id -> { username, password, roles }
 
 const EYE_OPEN_SVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
 const EYE_OFF_SVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
 
 export function renderAdminMembersView(container, navigate) {
-  let feedbackMessage = '';
   let newUserType = 'member'; // 'member' or 'admin'
   let isSaving = false;
 
   function hasPendingEdits() {
     return Object.values(stagedEdits).some(
-      (s) => s.isDeleted || s.username !== undefined || s.password !== undefined || s.roles !== undefined
+      (s) => s.username !== undefined || s.password !== undefined || s.roles !== undefined
     );
   }
 
@@ -41,14 +42,13 @@ export function renderAdminMembersView(container, navigate) {
       return {
         ...member,
         username: staged.username !== undefined ? staged.username : member.username,
-        password: staged.password !== undefined ? staged.password : (member.password || ''),
-        roles: staged.roles !== undefined ? staged.roles : (member.roles || []),
-        isDeleted: Boolean(staged.isDeleted)
+        password: staged.password !== undefined ? staged.password : '',
+        roles: staged.roles !== undefined ? staged.roles : (member.roles || [])
       };
     }
 
     const mergedMembers = members.map(getMergedMember);
-    const activeMembersCount = mergedMembers.filter((m) => !m.isDeleted).length;
+    const activeMembersCount = mergedMembers.length;
 
     // Generate HTML for each member card
     const membersListHtml = mergedMembers
@@ -62,147 +62,158 @@ export function renderAdminMembersView(container, navigate) {
         const isThisAdmin = !isThisOwner && Boolean(member.isAdmin || member.roleType === 'ADMIN');
         const isSelf = currentUser?.id === member.id || currentUser?.username?.toLowerCase() === member.username?.toLowerCase();
 
-        // Permission: Can current user edit this member's credentials?
-        // Owner can edit ANY member. Admin can ONLY edit own account.
+        // Permissions
         const canEditCredentials = isCurrentUserOwner || isSelf;
 
-        // Permission: Can current user delete this member?
-        // Owner can NEVER be deleted.
-        // Admin can be deleted by Owner, but NOT by other Admins.
-        // Team member can be deleted by Owner or Admin.
         let actionButtonHtml = '';
         if (isThisOwner) {
-          actionButtonHtml = '<span class="helper-text" style="color: #f87171; font-weight: 600; font-size: 11px;">Protected Owner Account</span>';
+          actionButtonHtml = '<span class="sidebar-tag" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border-color: rgba(239, 68, 68, 0.3); font-weight: 700;">Protected Owner</span>';
         } else if (isThisAdmin) {
           if (isCurrentUserOwner) {
-            actionButtonHtml = member.isDeleted
-              ? `<button type="button" class="btn btn-secondary btn-sm btn-undo-delete" data-id="${member.id}">Undo Delete</button>`
-              : `<button type="button" class="btn btn-danger btn-sm btn-delete-member" data-id="${member.id}">Delete Admin</button>`;
+            actionButtonHtml = `
+              <button type="button" class="btn btn-danger btn-sm btn-delete-member" data-id="${member.id}" data-username="${escapeHtml(member.username)}" data-is-admin="true">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 3px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                Delete Admin
+              </button>
+            `;
           } else {
-            actionButtonHtml = '<span class="helper-text" style="font-size: 11px;">Admin Account</span>';
+            actionButtonHtml = '<span class="sidebar-tag" style="background: rgba(99, 102, 241, 0.12); color: #818cf8; border-color: rgba(99, 102, 241, 0.3); font-weight: 600;">Admin Account</span>';
           }
         } else {
           // Normal team member
           if (isCurrentUserOwner || isCurrentUserAdmin) {
-            actionButtonHtml = member.isDeleted
-              ? `<button type="button" class="btn btn-secondary btn-sm btn-undo-delete" data-id="${member.id}">Undo Delete</button>`
-              : `<button type="button" class="btn btn-danger btn-sm btn-delete-member" data-id="${member.id}">Delete</button>`;
+            actionButtonHtml = `
+              <button type="button" class="btn btn-danger btn-sm btn-delete-member" data-id="${member.id}" data-username="${escapeHtml(member.username)}" data-is-admin="false">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 3px;"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                Delete
+              </button>
+            `;
           }
         }
 
         // Role Badge
         let badgeHtml = '';
         if (isThisOwner) {
-          badgeHtml = '<span class="sidebar-tag" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border-color: #f87171; font-weight: 600;">OWNER</span>';
+          badgeHtml = '<span class="sidebar-tag" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border-color: rgba(239, 68, 68, 0.4); font-weight: 700;">OWNER</span>';
         } else if (isThisAdmin) {
-          badgeHtml = '<span class="sidebar-tag" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; border-color: #818cf8; font-weight: 600;">ADMIN</span>';
+          badgeHtml = '<span class="sidebar-tag" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; border-color: rgba(99, 102, 241, 0.4); font-weight: 700;">ADMIN</span>';
         } else {
-          badgeHtml = '<span class="sidebar-tag" style="border-color: var(--border); color: var(--text-secondary);">MEMBER</span>';
+          badgeHtml = '<span class="sidebar-tag" style="border-color: var(--border); color: var(--text-secondary); font-weight: 700;">MEMBER</span>';
         }
 
+        const isMemberEdited = stagedEdits[member.id] && (
+          stagedEdits[member.id].username !== undefined ||
+          stagedEdits[member.id].password !== undefined ||
+          stagedEdits[member.id].roles !== undefined
+        );
+
         return `
-          <div class="member-card" style="padding: 16px; border: 1px solid ${member.isDeleted ? '#ef4444' : 'var(--border)'}; border-radius: var(--radius); background: ${member.isDeleted ? 'rgba(239, 68, 68, 0.06)' : 'var(--bg)'}; margin-bottom: 14px; transition: border-color 0.2s ease;">
+          <div class="member-card" style="${isMemberEdited ? 'border-color: rgba(255, 122, 0, 0.4); background: rgba(255, 122, 0, 0.02);' : ''}">
             <!-- Header Row: Name, Badge, Action Button -->
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
               <div style="display: flex; align-items: center; gap: 10px;">
-                <span style="font-weight: 700; font-size: 15px; color: ${member.isDeleted ? '#f87171' : 'var(--text-primary)'}; text-decoration: ${member.isDeleted ? 'line-through' : 'none'};">
-                  ${member.username}
+                <span style="font-weight: 700; font-size: 15px; color: var(--text-primary); letter-spacing: -0.01em;">
+                  ${escapeHtml(member.username)}
                 </span>
                 ${badgeHtml}
-                ${isSelf ? '<span class="sidebar-tag" style="border-color: #10b981; color: #10b981; font-size: 10px; font-weight: 600;">YOU</span>' : ''}
+                ${isSelf ? '<span class="sidebar-tag" style="border-color: #10b981; color: #10b981; font-weight: 700;">YOU</span>' : ''}
+                ${isMemberEdited ? '<span class="sidebar-tag" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); font-weight: 700;">EDITED</span>' : ''}
               </div>
               <div>
                 ${actionButtonHtml}
               </div>
             </div>
 
+            <!-- Credentials Inputs: Viewable & Editable Username and New Password -->
+            <div class="member-credentials-box">
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+                  <label for="user-input-${member.id}" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">
+                    Username
+                  </label>
+                  <span style="font-size: 11px; color: var(--text-muted);">
+                    ${canEditCredentials ? '(Editable)' : '(Read-only)'}
+                  </span>
+                </div>
+                <input 
+                  type="text" 
+                  id="user-input-${member.id}"
+                  class="edit-member-username" 
+                  data-id="${member.id}" 
+                  value="${escapeHtml(member.username)}" 
+                  ${canEditCredentials ? '' : 'disabled style="opacity: 0.6; cursor: not-allowed;"'} 
+                  autocomplete="off" 
+                />
+              </div>
+
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px;">
+                  <label for="pass-input-${member.id}" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">
+                    Password
+                  </label>
+                  <span style="font-size: 11px; color: var(--text-muted);">
+                    ${canEditCredentials ? '(Leave blank to keep current)' : '(Hidden)'}
+                  </span>
+                </div>
+                <div style="position: relative; display: flex; align-items: center;">
+                  <input 
+                    type="password" 
+                    id="pass-input-${member.id}" 
+                    class="edit-member-password" 
+                    data-id="${member.id}" 
+                    value="${escapeHtml(member.password)}" 
+                    placeholder="${canEditCredentials ? 'Enter new password to update...' : '••••••••'}" 
+                    ${canEditCredentials ? '' : 'disabled style="opacity: 0.6; cursor: not-allowed;"'} 
+                    style="padding-right: 42px; font-family: monospace;" 
+                    autocomplete="new-password" 
+                  />
+                  ${canEditCredentials ? `
+                    <button 
+                      type="button" 
+                      class="btn-toggle-eye" 
+                      data-target="pass-input-${member.id}" 
+                      style="position: absolute; right: 8px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; padding: 6px; color: var(--text-muted); border-radius: 4px; transition: color 0.15s ease;" 
+                      title="Show password"
+                      aria-label="Toggle password visibility"
+                    >
+                      ${EYE_OPEN_SVG}
+                    </button>
+                  ` : ''}
+                </div>
+              </div>
+            </div>
+
+            <!-- Roles Section: Shown ONLY for Team Members. Hidden for Admin and Owner -->
             ${
-              member.isDeleted
+              !isThisOwner && !isThisAdmin
                 ? `
-                  <div style="padding: 8px 12px; background: rgba(239, 68, 68, 0.12); border-radius: 4px; color: #f87171; font-size: 12px; display: flex; align-items: center; justify-content: space-between;">
-                    <span>Marked for deletion. Click <strong>Save Changes</strong> below to permanently delete this user.</span>
-                    <button type="button" class="btn btn-secondary btn-sm btn-undo-delete" data-id="${member.id}" style="height: 28px; padding: 0 10px;">Undo</button>
+                  <div>
+                    <div style="margin-bottom: 8px; font-size: 12px; font-weight: 600; color: var(--text-secondary);">Roles &amp; their Check boxes:</div>
+                    <div class="roles-grid" style="display: flex; flex-wrap: wrap; gap: 14px;">
+                      ${roles
+                        .map((r) => {
+                          const checked = (member.roles || []).includes(r.name);
+                          return `
+                            <label class="checkbox-label" style="font-size: 12.5px; padding: 4px 8px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border); border-radius: 6px; transition: all 0.15s ease;">
+                              <input 
+                                type="checkbox" 
+                                class="member-role-check" 
+                                data-member-id="${member.id}" 
+                                data-role-name="${escapeHtml(r.name)}" 
+                                ${checked ? 'checked' : ''} 
+                              />
+                              <span style="font-weight: 500;">${escapeHtml(r.name)}</span>
+                            </label>
+                          `;
+                        })
+                        .join('')}
+                    </div>
                   </div>
                 `
                 : `
-                  <!-- Credentials Inputs: Viewable & Editable Username and Password -->
-                  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-bottom: 12px; background: rgba(255,255,255,0.02); padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--border);">
-                    <div>
-                      <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px; font-weight: 500;">
-                        Username ${canEditCredentials ? '(Editable)' : '(Read-only)'}
-                      </label>
-                      <input 
-                        type="text" 
-                        class="edit-member-username" 
-                        data-id="${member.id}" 
-                        value="${member.username}" 
-                        ${canEditCredentials ? '' : 'disabled style="opacity: 0.7; cursor: not-allowed;"'} 
-                        autocomplete="off" 
-                      />
-                    </div>
-
-                    <div>
-                      <label style="font-size: 11px; color: var(--text-muted); display: block; margin-bottom: 4px; font-weight: 500;">
-                        Password ${canEditCredentials ? '(Click to view or edit)' : '(Hidden)'}
-                      </label>
-                      <div style="position: relative; display: flex; align-items: center;">
-                        <input 
-                          type="password" 
-                          id="pass-input-${member.id}" 
-                          class="edit-member-password" 
-                          data-id="${member.id}" 
-                          value="${member.password || ''}" 
-                          placeholder="Password not set..." 
-                          ${canEditCredentials ? '' : 'disabled style="opacity: 0.7; cursor: not-allowed;"'} 
-                          style="padding-right: 36px; font-family: monospace;" 
-                          autocomplete="new-password" 
-                        />
-                        <button 
-                          type="button" 
-                          class="btn-toggle-eye" 
-                          data-target="pass-input-${member.id}" 
-                          style="position: absolute; right: 6px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; padding: 4px 6px; color: var(--text-muted);" 
-                          title="Show/Hide Password"
-                        >
-                          ${EYE_OPEN_SVG}
-                        </button>
-                      </div>
-                    </div>
+                  <div style="font-size: 12px; color: var(--text-muted); font-style: italic; padding: 4px 2px;">
+                    ${isThisOwner ? 'Owner Account — Complete system authority. No task roles needed.' : 'Administrative Account — Full access across production, channels, and admin panel.'}
                   </div>
-
-                  <!-- Roles Section: Shown ONLY for Team Members. Hidden for Admin and Owner -->
-                  ${
-                    !isThisOwner && !isThisAdmin
-                      ? `
-                        <div>
-                          <div class="helper-text" style="margin-bottom: 6px; font-size: 12px; font-weight: 500;">Roles &amp; their Check boxes:</div>
-                          <div class="roles-grid">
-                            ${roles
-                              .map((r) => {
-                                const checked = (member.roles || []).includes(r.name);
-                                return `
-                                  <label class="checkbox-label" style="font-size: 12px;">
-                                    <input 
-                                      type="checkbox" 
-                                      class="member-role-check" 
-                                      data-member-id="${member.id}" 
-                                      data-role-name="${r.name}" 
-                                      ${checked ? 'checked' : ''} 
-                                    />
-                                    ${r.name}
-                                  </label>
-                                `;
-                              })
-                              .join('')}
-                          </div>
-                        </div>
-                      `
-                      : `
-                        <div style="font-size: 12px; color: var(--text-muted); font-style: italic; padding: 4px 2px;">
-                          ${isThisOwner ? 'Owner Account — Complete system authority. No task roles needed.' : 'Administrative Account — Full access across production, channels, and admin panel.'}
-                        </div>
-                      `
-                  }
                 `
             }
           </div>
@@ -214,21 +225,22 @@ export function renderAdminMembersView(container, navigate) {
     let creationSectionHtml = '';
     if (isCurrentUserOwner) {
       creationSectionHtml = `
-        <div class="card" style="margin-bottom: 24px;">
-          <h2>Add New User (Team Member or Admin)</h2>
+        <div class="card" style="margin-bottom: 24px; padding: 22px;">
+          <h2 style="font-size: 17px; margin-bottom: 4px;">Add New User (Team Member or Admin)</h2>
+          <p class="helper-text" style="margin-bottom: 16px; font-size: 12.5px;">Create a team account and assign initial production permissions.</p>
           
-          <form id="add-member-form" style="margin-top: 14px;">
+          <form id="add-member-form">
             <!-- Account Type Selector -->
-            <div style="margin-bottom: 14px;">
+            <div style="margin-bottom: 16px;">
               <label style="font-size: 12px; font-weight: 600; margin-bottom: 8px; display: block; color: var(--text-primary);">
                 Select Account Type:
               </label>
               <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-                <label style="cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 8px 16px; border: 1px solid ${newUserType === 'member' ? 'var(--accent)' : 'var(--border)'}; border-radius: var(--radius); background: ${newUserType === 'member' ? 'rgba(99, 102, 241, 0.12)' : 'var(--bg)'}; font-size: 13px; font-weight: 500;">
+                <label style="cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 9px 16px; border: 1px solid ${newUserType === 'member' ? 'var(--accent)' : 'var(--border)'}; border-radius: var(--radius); background: ${newUserType === 'member' ? 'rgba(255, 122, 0, 0.1)' : 'var(--surface)'}; font-size: 13px; font-weight: 500; transition: all 0.15s ease;">
                   <input type="radio" name="new-user-type" value="member" ${newUserType === 'member' ? 'checked' : ''} style="margin: 0;" />
                   <span>Team Member</span>
                 </label>
-                <label style="cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 8px 16px; border: 1px solid ${newUserType === 'admin' ? 'var(--accent)' : 'var(--border)'}; border-radius: var(--radius); background: ${newUserType === 'admin' ? 'rgba(99, 102, 241, 0.12)' : 'var(--bg)'}; font-size: 13px; font-weight: 500;">
+                <label style="cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 9px 16px; border: 1px solid ${newUserType === 'admin' ? 'var(--accent)' : 'var(--border)'}; border-radius: var(--radius); background: ${newUserType === 'admin' ? 'rgba(255, 122, 0, 0.1)' : 'var(--surface)'}; font-size: 13px; font-weight: 500; transition: all 0.15s ease;">
                   <input type="radio" name="new-user-type" value="admin" ${newUserType === 'admin' ? 'checked' : ''} style="margin: 0;" />
                   <span>Admin (Full Admin Access)</span>
                 </label>
@@ -236,16 +248,16 @@ export function renderAdminMembersView(container, navigate) {
             </div>
 
             <!-- Credentials Input Row -->
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 14px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 16px;">
               <div class="form-group" style="margin-bottom: 0;">
-                <label for="new-member-user">Assign username</label>
+                <label for="new-member-user" style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 6px;">Assign username</label>
                 <input type="text" id="new-member-user" placeholder="e.g. john_editor" required autocomplete="off" />
               </div>
               <div class="form-group" style="margin-bottom: 0;">
-                <label for="new-member-pass">Password</label>
+                <label for="new-member-pass" style="font-size: 12px; font-weight: 600; display: block; margin-bottom: 6px;">Password</label>
                 <div style="position: relative; display: flex; align-items: center;">
-                  <input type="password" id="new-member-pass" placeholder="Create password" required autocomplete="new-password" style="padding-right: 36px; font-family: monospace;" />
-                  <button type="button" class="btn-toggle-eye" data-target="new-member-pass" style="position: absolute; right: 6px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; padding: 4px 6px; color: var(--text-muted);" title="Show/Hide Password">${EYE_OPEN_SVG}</button>
+                  <input type="password" id="new-member-pass" placeholder="Create password" required autocomplete="new-password" style="padding-right: 42px; font-family: monospace;" />
+                  <button type="button" class="btn-toggle-eye" data-target="new-member-pass" style="position: absolute; right: 8px; background: transparent; border: none; cursor: pointer; display: flex; align-items: center; padding: 6px; color: var(--text-muted); border-radius: 4px; transition: color 0.15s ease;" title="Show password" aria-label="Toggle password visibility">${EYE_OPEN_SVG}</button>
                 </div>
               </div>
             </div>
@@ -254,14 +266,14 @@ export function renderAdminMembersView(container, navigate) {
             ${
               newUserType === 'member'
                 ? `
-                  <div class="form-group" style="margin-bottom: 16px;">
-                    <label style="margin-bottom: 8px; display: block;">Select Initial Roles:</label>
-                    <div class="roles-grid" id="new-member-roles-grid">
+                  <div class="form-group" style="margin-bottom: 18px;">
+                    <label style="margin-bottom: 8px; display: block; font-size: 12px; font-weight: 600;">Select Initial Roles:</label>
+                    <div class="roles-grid" id="new-member-roles-grid" style="display: flex; flex-wrap: wrap; gap: 12px;">
                       ${roles
                         .map((r) => `
-                          <label class="checkbox-label">
-                            <input type="checkbox" value="${r.name}" class="new-member-role-input" />
-                            ${r.name}
+                          <label class="checkbox-label" style="font-size: 12.5px; padding: 6px 12px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border); border-radius: 6px;">
+                            <input type="checkbox" value="${escapeHtml(r.name)}" class="new-member-role-input" />
+                            <span>${escapeHtml(r.name)}</span>
                           </label>
                         `)
                         .join('')}
@@ -269,13 +281,13 @@ export function renderAdminMembersView(container, navigate) {
                   </div>
                 `
                 : `
-                  <div style="margin-bottom: 16px; padding: 10px 14px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: var(--radius); font-size: 12px; color: var(--text-primary);">
-                    <strong>Admin Account:</strong> Admins receive complete management privileges across the Production Table, Channels, Videos, and Roles. No task roles are required.
+                  <div style="margin-bottom: 18px; padding: 12px 16px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); border-radius: var(--radius); font-size: 12.5px; color: var(--text-primary); line-height: 1.5;">
+                    <strong>Admin Account:</strong> Admins receive complete management privileges across the Production Table, Channels, Videos, and Roles. No specific task roles are required.
                   </div>
                 `
             }
 
-            <button type="submit" class="btn btn-primary" style="height: 38px;">
+            <button type="submit" class="btn btn-primary" id="btn-create-user-submit" style="height: 40px; padding: 0 20px; font-weight: 700;">
               Create ${newUserType === 'admin' ? 'Admin' : 'Team Member'}
             </button>
           </form>
@@ -283,12 +295,12 @@ export function renderAdminMembersView(container, navigate) {
       `;
     } else {
       creationSectionHtml = `
-        <div class="card" style="padding: 16px 20px; background: rgba(255, 255, 255, 0.02); border: 1px dashed var(--border); border-radius: var(--radius); margin-bottom: 24px;">
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent); flex-shrink: 0;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+        <div class="card" style="padding: 18px 22px; background: rgba(255, 255, 255, 0.02); border: 1px dashed var(--border); border-radius: var(--radius); margin-bottom: 24px;">
+          <div style="display: flex; align-items: center; gap: 14px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent); flex-shrink: 0;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
             <div>
-              <strong style="color: var(--text-primary); font-size: 13px;">User Creation Restricted</strong>
-              <div class="helper-text" style="font-size: 12px; margin-top: 2px;">
+              <strong style="color: var(--text-primary); font-size: 13.5px;">User Creation Restricted</strong>
+              <div class="helper-text" style="font-size: 12px; margin-top: 3px;">
                 Only the Owner can create new Admins or Team Members. You have administrative access to view the team and manage your own credentials below.
               </div>
             </div>
@@ -298,25 +310,24 @@ export function renderAdminMembersView(container, navigate) {
     }
 
     container.innerHTML = `
-      <div class="main-content">
-        ${feedbackMessage ? `<div class="notification-banner" style="background-color: var(--surface); border-color: var(--border); color: var(--text-primary); margin-bottom: 16px;">${feedbackMessage}</div>` : ''}
-
+      <div class="main-content" style="max-width: 1040px; margin: 0 auto; padding-bottom: 60px;">
         ${creationSectionHtml}
 
         <!-- Members List Card -->
-        <div class="card">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+        <div class="card" style="padding: 22px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; flex-wrap: wrap; gap: 12px;">
             <div>
-              <h3 style="margin-bottom: 2px;">Team Members &amp; Admins (${activeMembersCount})</h3>
+              <h3 style="margin-bottom: 3px; font-size: 17px;">Team Members &amp; Admins (${activeMembersCount})</h3>
+              <p class="helper-text" style="font-size: 12px; margin: 0;">Manage accounts, credentials, and role assignments.</p>
             </div>
             <div>
               ${
                 hasPendingEdits()
                   ? `
-                    <div style="display: flex; gap: 8px; align-items: center;">
+                    <div style="display: flex; gap: 10px; align-items: center;">
                       <span class="sidebar-tag" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border-color: rgba(245, 158, 11, 0.4); font-weight: 700; padding: 4px 10px;">Unsaved Changes</span>
-                      <button type="button" class="btn btn-primary btn-sm btn-save-changes-trigger" ${isSaving ? 'disabled' : ''} style="height: 30px;">
-                        ${isSaving ? 'Saving...' : 'Save Changes'}
+                      <button type="button" class="btn btn-primary btn-sm btn-save-changes-trigger" ${isSaving ? 'disabled' : ''} style="height: 32px; padding: 0 14px; font-weight: 700;">
+                        ${isSaving ? '<span class="btn-spinner"></span> Saving...' : 'Save Changes'}
                       </button>
                     </div>
                   `
@@ -325,19 +336,20 @@ export function renderAdminMembersView(container, navigate) {
             </div>
           </div>
 
-          <div class="scrollable-container" style="max-height: 520px; padding: 2px;">
-            ${membersListHtml || '<div style="padding: 24px; text-align: center;" class="helper-text">No members found.</div>'}
+          <div class="scrollable-container" style="max-height: 600px; padding: 2px;">
+            ${membersListHtml || '<div style="padding: 32px; text-align: center;" class="helper-text">No team members found.</div>'}
           </div>
 
           <!-- Bottom Action Bar: Save Changes Button -->
-          <div style="margin-top: 20px; padding: 14px 16px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border); border-radius: var(--radius); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+          <div style="margin-top: 22px; padding: 16px 20px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border); border-radius: var(--radius); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
             <div>
-              <div style="font-weight: 700; font-size: 14px; color: var(--text-primary);">Save Changes</div>
+              <div style="font-weight: 700; font-size: 14.5px; color: var(--text-primary);">Save Changes</div>
+              <div class="helper-text" style="font-size: 12px; margin-top: 2px;">Commit all username, password, and role updates to the database.</div>
             </div>
             <div style="display: flex; gap: 10px; align-items: center;">
               ${
                 hasPendingEdits()
-                  ? `<button type="button" id="btn-discard-all" class="btn btn-secondary btn-sm" style="height: 38px;">Discard Changes</button>`
+                  ? `<button type="button" id="btn-discard-all" class="btn btn-secondary btn-sm" style="height: 40px; padding: 0 16px;">Discard Changes</button>`
                   : ''
               }
               <button 
@@ -345,9 +357,9 @@ export function renderAdminMembersView(container, navigate) {
                 id="btn-save-all-updates" 
                 class="btn btn-primary btn-cta" 
                 ${!hasPendingEdits() || isSaving ? 'disabled' : ''} 
-                style="height: 38px; min-width: 170px; font-weight: 700;"
+                style="height: 40px; min-width: 170px; font-weight: 700; font-size: 13.5px;"
               >
-                ${isSaving ? 'Saving Changes...' : 'Save Changes'}
+                ${isSaving ? '<span class="btn-spinner"></span> Saving Changes...' : 'Save Changes'}
               </button>
             </div>
           </div>
@@ -369,11 +381,11 @@ export function renderAdminMembersView(container, navigate) {
           if (input.type === 'password') {
             input.type = 'text';
             btn.innerHTML = EYE_OFF_SVG;
-            btn.title = 'Hide Password';
+            btn.title = 'Hide password';
           } else {
             input.type = 'password';
             btn.innerHTML = EYE_OPEN_SVG;
-            btn.title = 'Show Password';
+            btn.title = 'Show password';
           }
         }
       });
@@ -387,17 +399,27 @@ export function renderAdminMembersView(container, navigate) {
       });
     });
 
-    // 3. Add Member Form Submit (Staged or Direct)
+    // 3. Add Member Form Submit
     const addMemberForm = container.querySelector('#add-member-form');
     if (addMemberForm) {
       addMemberForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const uInput = container.querySelector('#new-member-user');
         const pInput = container.querySelector('#new-member-pass');
-        const submitBtn = addMemberForm.querySelector('button[type="submit"]');
+        const submitBtn = container.querySelector('#btn-create-user-submit');
 
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Creating...';
+        const uVal = (uInput?.value || '').trim();
+        const pVal = pInput?.value || '';
+
+        if (!uVal || !pVal) {
+          showToast('Please enter both username and password.', 'warning');
+          return;
+        }
+
+        if (submitBtn) {
+          submitBtn.disabled = true;
+          submitBtn.innerHTML = '<span class="btn-spinner"></span> Creating...';
+        }
 
         const selectedRoles = [];
         if (newUserType === 'member') {
@@ -407,17 +429,21 @@ export function renderAdminMembersView(container, navigate) {
         }
 
         const isAdmin = newUserType === 'admin';
-        const res = await store.addTeamMember(uInput.value, pInput.value, selectedRoles, isAdmin, false);
+        const res = await store.addTeamMember(uVal, pVal, selectedRoles, isAdmin, false);
 
         if (res.success) {
-          feedbackMessage = `✓ ${isAdmin ? 'Admin' : 'Team Member'} "${res.member.username}" created successfully!`;
-          uInput.value = '';
-          pInput.value = '';
+          showToast(`✓ ${isAdmin ? 'Admin' : 'Team Member'} "${res.member.username}" created successfully!`, 'success');
+          if (uInput) uInput.value = '';
+          if (pInput) pInput.value = '';
         } else {
-          feedbackMessage = res.error || 'Failed to create user.';
+          showToast(res.error || 'Failed to create user.', 'danger');
         }
 
-        submitBtn.disabled = false;
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = `Create ${newUserType === 'admin' ? 'Admin' : 'Team Member'}`;
+        }
+
         render();
       });
     }
@@ -428,7 +454,6 @@ export function renderAdminMembersView(container, navigate) {
         const id = e.target.dataset.id;
         if (!stagedEdits[id]) stagedEdits[id] = {};
         stagedEdits[id].username = e.target.value;
-        hasUnsavedChanges = true;
         updateSaveBtnState();
       });
     });
@@ -439,7 +464,6 @@ export function renderAdminMembersView(container, navigate) {
         const id = e.target.dataset.id;
         if (!stagedEdits[id]) stagedEdits[id] = {};
         stagedEdits[id].password = e.target.value;
-        hasUnsavedChanges = true;
         updateSaveBtnState();
       });
     });
@@ -461,46 +485,50 @@ export function renderAdminMembersView(container, navigate) {
 
         if (!stagedEdits[memberId]) stagedEdits[memberId] = {};
         stagedEdits[memberId].roles = newRoles;
-        hasUnsavedChanges = true;
         updateSaveBtnState();
       });
     });
 
-    // 7. Staged Delete Member
+    // 7. Delete Member: Prompts smooth blur-overlay confirmation modal, then deletes
     container.querySelectorAll('.btn-delete-member').forEach((btn) => {
       btn.addEventListener('click', (e) => {
-        const id = e.target.dataset.id;
-        if (!stagedEdits[id]) stagedEdits[id] = {};
-        stagedEdits[id].isDeleted = true;
-        hasUnsavedChanges = true;
-        render();
+        e.preventDefault();
+        const id = btn.dataset.id;
+        const username = btn.dataset.username || 'this user';
+        const isAdminAccount = btn.dataset.isAdmin === 'true';
+
+        showConfirmModal({
+          title: isAdminAccount ? 'Delete Admin Account' : 'Delete Team Member',
+          message: `Are you sure you want to delete <strong>${escapeHtml(username)}</strong>? This action cannot be undone and will permanently revoke their access and assigned duties.`,
+          confirmText: 'Delete Account',
+          cancelText: 'Cancel',
+          danger: true,
+          loadingText: 'Deleting...',
+          onConfirm: async () => {
+            const res = await store.deleteTeamMember(id);
+            if (res.success) {
+              if (stagedEdits[id]) delete stagedEdits[id];
+              showToast(`Account "${username}" was deleted successfully.`, 'danger');
+              render();
+            } else {
+              showToast(`Failed to delete account: ${res.error || 'Unknown error'}`, 'danger');
+            }
+          }
+        });
       });
     });
 
-    // 8. Staged Undo Delete
-    container.querySelectorAll('.btn-undo-delete').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
-        const id = e.target.dataset.id;
-        if (stagedEdits[id]) {
-          stagedEdits[id].isDeleted = false;
-        }
-        checkUnsavedStatus();
-        render();
-      });
-    });
-
-    // 9. Discard All Changes
+    // 8. Discard All Changes
     const discardBtn = container.querySelector('#btn-discard-all');
     if (discardBtn) {
       discardBtn.addEventListener('click', () => {
         stagedEdits = {};
-        hasUnsavedChanges = false;
-        feedbackMessage = 'Staged changes discarded.';
+        showToast('All staged changes have been discarded.', 'info');
         render();
       });
     }
 
-    // 10. Save Changes Action (Commits all staged changes to DB in one go)
+    // 9. Save Changes Action (Commits all modified fields mapped to each user's ID)
     async function executeSaveBatch() {
       if (!hasPendingEdits() || isSaving) return;
 
@@ -509,21 +537,18 @@ export function renderAdminMembersView(container, navigate) {
       const triggerBtn = container.querySelector('.btn-save-changes-trigger');
       if (saveBtn) {
         saveBtn.disabled = true;
-        saveBtn.textContent = 'Saving Changes...';
+        saveBtn.innerHTML = '<span class="btn-spinner"></span> Saving Changes...';
       }
       if (triggerBtn) {
         triggerBtn.disabled = true;
-        triggerBtn.textContent = 'Saving...';
+        triggerBtn.innerHTML = '<span class="btn-spinner"></span> Saving...';
       }
 
       const modified = [];
-      const deletedIds = [];
 
       Object.keys(stagedEdits).forEach((id) => {
         const s = stagedEdits[id];
-        if (s.isDeleted) {
-          deletedIds.push(id);
-        } else if (s.username !== undefined || s.password !== undefined || s.roles !== undefined) {
+        if (s.username !== undefined || s.password !== undefined || s.roles !== undefined) {
           modified.push({
             id,
             username: s.username,
@@ -533,14 +558,14 @@ export function renderAdminMembersView(container, navigate) {
         }
       });
 
-      const res = await store.batchSaveTeamMembers({ modified, deletedIds });
+      const res = await store.batchSaveTeamMembers({ modified, deletedIds: [] });
 
       isSaving = false;
       if (res.success) {
         stagedEdits = {};
-        feedbackMessage = `✓ All changes (${res.savedCount || (modified.length + deletedIds.length)}) successfully saved to the database!`;
+        showToast('Changes saved successfully!', 'success');
       } else {
-        feedbackMessage = `Error saving: ${(res.errors || []).join('; ')}`;
+        showToast(`Failed to save changes: ${(res.errors || []).join('; ')}`, 'danger');
       }
 
       render();
@@ -553,13 +578,23 @@ export function renderAdminMembersView(container, navigate) {
     if (triggerBtn) triggerBtn.addEventListener('click', executeSaveBatch);
 
     function updateSaveBtnState() {
+      const pending = hasPendingEdits();
       const btn = container.querySelector('#btn-save-all-updates');
-      if (btn) btn.disabled = !hasPendingEdits();
+      if (btn) btn.disabled = !pending || isSaving;
       const topBtn = container.querySelector('.btn-save-changes-trigger');
-      if (topBtn) topBtn.disabled = !hasPendingEdits();
+      if (topBtn) topBtn.disabled = !pending || isSaving;
     }
   }
 
   render();
 }
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}

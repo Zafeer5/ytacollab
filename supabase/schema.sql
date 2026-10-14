@@ -223,6 +223,30 @@ begin
 end;
 $$;
 
+-- Function to safely delete a user account from public.profiles and auth.users
+create or replace function public.admin_delete_user(
+    target_user_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+begin
+    -- Protect Owner accounts from deletion
+    if exists (select 1 from public.profiles where id = target_user_id and (is_owner = true or username = 'owner' or username = 'admin')) then
+        raise exception 'Owner account cannot be deleted.';
+    end if;
+
+    -- Delete from public.profiles (cascades related records per schema)
+    delete from public.profiles where id = target_user_id;
+
+    -- Delete from auth.users
+    delete from auth.users where id = target_user_id;
+end;
+$$;
+
+
 -- ------------------------------------------------------------------------------
 -- STORAGE BUCKETS (Thumbnails & Voiceovers)
 -- ------------------------------------------------------------------------------

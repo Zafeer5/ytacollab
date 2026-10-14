@@ -3,6 +3,8 @@
    Pure Vanilla CSS - Clean, Sparse, Utilitarian, Responsive
    ============================================================================== */
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
 :root {
   color-scheme: dark;
   --bg: #09090b;
@@ -25,7 +27,7 @@
   --success-text: #4ade80;
   --success-bg: #0f291e;
   --success-border: #14532d;
-  --font-stack: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-stack: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --radius: 8px;
   --sidebar-width: 230px;
   --sidebar-collapsed-width: 64px;
@@ -245,15 +247,17 @@ html, body {
 }
 
 .sidebar-tag {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.05em;
-  padding: 2px 4px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 6px;
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: 4px;
   color: var(--text-muted);
   flex-shrink: 0;
-  font-family: monospace;
+  font-family: var(--font-stack);
+  transition: all 0.15s ease;
 }
 
 .sidebar-item.active .sidebar-tag {
@@ -428,11 +432,11 @@ textarea {
   border: 1px solid var(--border);
   color: var(--text-primary);
   font-family: inherit;
-  font-size: 13px;
-  padding: 9px 12px;
+  font-size: 13.5px;
+  padding: 10px 14px;
   border-radius: var(--radius);
   outline: none;
-  transition: border-color 0.15s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
 input[type="text"]:focus,
@@ -440,7 +444,8 @@ input[type="password"]:focus,
 input[type="number"]:focus,
 select:focus,
 textarea:focus {
-  border-color: var(--text-primary);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 122, 0, 0.18);
 }
 
 textarea {
@@ -479,6 +484,10 @@ input[type="checkbox"] {
 }
 
 /* Buttons */
+button, .btn {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -491,20 +500,38 @@ input[type="checkbox"] {
   border-radius: var(--radius);
   cursor: pointer;
   border: 1px solid transparent;
-  transition: transform 0.06s ease, background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
   white-space: nowrap;
   user-select: none;
 }
 
-.btn:active:not(:disabled) {
-  transform: scale(0.97);
-  opacity: 0.92;
+button:active:not(:disabled), .btn:active:not(:disabled) {
+  transform: scale(0.96);
+  opacity: 0.94;
 }
 
 .btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
   filter: grayscale(0.2);
+}
+
+/* Button Spinner */
+.btn-spinner {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: btnSpin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+@keyframes btnSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* High-Contrast Orange CTA - Mistake-Free with Bold Dark Text */
@@ -528,7 +555,7 @@ input[type="checkbox"] {
   background-color: var(--cta-orange-active);
   border-color: var(--cta-orange-active);
   color: var(--cta-orange-text) !important;
-  transform: scale(0.97);
+  transform: scale(0.96);
 }
 
 .btn-secondary {
@@ -550,6 +577,22 @@ input[type="checkbox"] {
 
 .btn-danger:hover:not(:disabled) {
   background-color: var(--pending-bg);
+  border-color: #ef4444;
+}
+
+.btn-danger-solid {
+  background-color: #ef4444;
+  color: #ffffff !important;
+  border-color: #ef4444;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
+}
+
+.btn-danger-solid:hover:not(:disabled) {
+  background-color: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.5);
 }
 
 .btn-sm {
@@ -2343,4 +2386,301 @@ tr.row-selected td {
   gap: 10px;
   justify-content: flex-end;
   align-items: center;
+}
+
+
+/* ==============================================================================
+   Toast Notification System
+   ============================================================================== */
+.yta-toast-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 100000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+  max-width: 400px;
+  width: calc(100% - 40px);
+}
+
+.yta-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: rgba(18, 18, 22, 0.96);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.65), 0 2px 6px rgba(0, 0, 0, 0.3);
+  color: var(--text-primary);
+  font-size: 13.5px;
+  font-weight: 500;
+  animation: toastSlideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.yta-toast-closing {
+  animation: toastSlideOut 0.2s ease-in forwards !important;
+}
+
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toastSlideOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+}
+
+.yta-toast-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.yta-toast-message {
+  flex: 1;
+  line-height: 1.45;
+}
+
+.yta-toast-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.yta-toast-close:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.yta-toast-success {
+  border-color: rgba(52, 211, 153, 0.4);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.14), rgba(18, 18, 22, 0.96) 65%);
+}
+
+.yta-toast-success .yta-toast-icon {
+  color: #34d399;
+}
+
+.yta-toast-danger {
+  border-color: rgba(248, 113, 113, 0.4);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.14), rgba(18, 18, 22, 0.96) 65%);
+}
+
+.yta-toast-danger .yta-toast-icon {
+  color: #f87171;
+}
+
+.yta-toast-warning {
+  border-color: rgba(251, 191, 36, 0.4);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.14), rgba(18, 18, 22, 0.96) 65%);
+}
+
+.yta-toast-warning .yta-toast-icon {
+  color: #fbbf24;
+}
+
+.yta-toast-info {
+  border-color: rgba(255, 122, 0, 0.4);
+  background: linear-gradient(135deg, rgba(255, 122, 0, 0.14), rgba(18, 18, 22, 0.96) 65%);
+}
+
+.yta-toast-info .yta-toast-icon {
+  color: var(--accent);
+}
+
+/* ==============================================================================
+   Blur-Overlay Confirmation Modal
+   ============================================================================== */
+.yta-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: modalFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.yta-modal-closing {
+  animation: modalFadeOut 0.18s ease-in forwards !important;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes modalFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+.yta-modal-dialog {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  max-width: 440px;
+  width: 100%;
+  overflow: hidden;
+  animation: modalPopIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalPopIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.yta-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 22px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.yta-modal-icon-badge {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.yta-modal-icon-danger {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.yta-modal-icon-accent {
+  background: rgba(255, 122, 0, 0.15);
+  border: 1px solid rgba(255, 122, 0, 0.3);
+}
+
+.yta-modal-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.yta-modal-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.yta-modal-close {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  transition: all 0.15s ease;
+}
+
+.yta-modal-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.yta-modal-body {
+  padding: 22px;
+}
+
+.yta-modal-message {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.yta-modal-message strong {
+  color: var(--text-primary);
+}
+
+.yta-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 22px;
+  border-top: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.01);
+}
+
+/* User / Team Member Card Enhancements */
+.member-card {
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  margin-bottom: 18px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.member-card:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.member-credentials-box {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 14px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
 }
