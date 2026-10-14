@@ -16,7 +16,7 @@ function escapeHtml(str) {
 }
 
 /**
- * Determine asset fulfillment stage for Kanban grouping and progress metrics:
+ * Determine asset fulfillment stage for Kanban grouping:
  * - 'pending-script': No script yet
  * - 'in-progress': Script submitted, but voiceover or thumbnail pending
  * - 'assets-ready': Script, voiceover, and thumbnail all present, but not marked completed
@@ -38,15 +38,357 @@ function getVideoStage(video) {
   return 'pending-script';
 }
 
+/**
+ * Opens a sleek, dedicated read-only video preview modal for viewing, copying, and downloading
+ */
+function openKanbanVideoPreviewModal(video, currentChannel, navigate) {
+  const prevModal = document.getElementById('kanban-video-preview-modal');
+  if (prevModal) prevModal.remove();
+
+  const scriptStat = store.getCellStatus(video, 'script');
+  const voStat = store.getCellStatus(video, 'voiceover');
+  const thumbStat = store.getCellStatus(video, 'thumbnail');
+  const metaStat = store.getCellStatus(video, 'metaInfo');
+
+  const voHasValidUrl = Boolean(video.voiceover?.url && video.voiceover.url.startsWith('http'));
+  const thumbHasValidUrl = Boolean(video.thumbnail?.url && video.thumbnail.url.startsWith('http'));
+  const stage = getVideoStage(video);
+
+  const backdrop = document.createElement('div');
+  backdrop.id = 'kanban-video-preview-modal';
+  backdrop.className = 'yta-modal-backdrop';
+
+  const closeModal = () => {
+    backdrop.classList.add('yta-modal-closing');
+    backdrop.addEventListener('animationend', () => backdrop.remove(), { once: true });
+    document.removeEventListener('keydown', handleKeydown);
+  };
+
+  const handleKeydown = (e) => {
+    if (e.key === 'Escape') closeModal();
+  };
+  document.addEventListener('keydown', handleKeydown);
+
+  backdrop.addEventListener('click', (e) => {
+    if (e.target === backdrop) closeModal();
+  });
+
+  backdrop.innerHTML = `
+    <div class="yta-modal-dialog kanban-preview-dialog" role="dialog" aria-modal="true" style="animation: modalPopIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);">
+      <!-- Modal Header -->
+      <div class="yta-modal-header" style="border-bottom: 1px solid var(--border); padding: 18px 22px;">
+        <div style="display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1;">
+          <span class="md-video-badge" style="flex-shrink: 0;">VIDEO ${video.videoNumber}</span>
+          <div style="min-width: 0;">
+            <div class="yta-modal-title" style="font-size: 15px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(video.title)}">
+              ${escapeHtml(video.title)}
+            </div>
+            <div class="yta-modal-subtitle" style="margin-top: 2px; font-size: 11.5px; display: flex; gap: 10px; align-items: center;">
+              <span>Channel: <strong>${escapeHtml(currentChannel?.name || '')}</strong></span>
+              <span>•</span>
+              <span>Stage: <strong style="color: ${video.status ? 'var(--cta-orange)' : 'var(--text-secondary)'};">${escapeHtml(stage.replace('-', ' ').toUpperCase())}</strong></span>
+            </div>
+          </div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+          ${
+            video.status
+              ? '<span class="status-pill-completed" style="font-size: 11px; padding: 4px 10px;">✓ Completed</span>'
+              : '<span class="status-pill-pending" style="font-size: 11px; padding: 4px 10px;">⏳ In Progress</span>'
+          }
+          <button type="button" class="yta-modal-close" id="btn-close-preview-modal" title="Close (Esc)">✕</button>
+        </div>
+      </div>
+
+      <!-- Modal Body (Scrollable Read-Only Preview) -->
+      <div class="kanban-preview-body">
+        <!-- 1. Title Section -->
+        <div class="preview-asset-card">
+          <div class="preview-asset-header">
+            <span class="preview-asset-label">🏷️ Video Title</span>
+            <button type="button" class="btn btn-secondary btn-sm btn-modal-copy" data-copy-text="${encodeURIComponent(video.title)}">
+              Copy Title
+            </button>
+          </div>
+          <div style="font-size: 14px; font-weight: 600; color: var(--text-primary); line-height: 1.4; padding: 4px 0;">
+            ${escapeHtml(video.title)}
+          </div>
+        </div>
+
+        <!-- 2. Video Script -->
+        <div class="preview-asset-card">
+          <div class="preview-asset-header">
+            <span class="preview-asset-label">
+              📝 Video Script
+              ${
+                scriptStat.status === 'pending'
+                  ? '<span class="badge-pending" style="margin-left: 6px;">pending</span>'
+                  : '<span style="color: var(--success-text); font-size: 10.5px; margin-left: 6px;">✓ submitted</span>'
+              }
+            </span>
+            <button 
+              type="button" 
+              class="btn btn-secondary btn-sm btn-modal-copy" 
+              data-copy-text="${encodeURIComponent(video.script || '')}" 
+              ${!video.script ? 'disabled' : ''}
+            >
+              Copy Script
+            </button>
+          </div>
+          ${
+            video.script && video.script.trim()
+              ? `<div class="preview-text-box">${escapeHtml(video.script)}</div>`
+              : `<div style="padding: 12px; border: 1px dashed var(--border); border-radius: 6px; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
+                   <span class="badge-pending">pending</span> No script has been submitted for this video yet.
+                 </div>`
+          }
+        </div>
+
+        <!-- 3. Voiceover Audio -->
+        <div class="preview-asset-card">
+          <div class="preview-asset-header">
+            <span class="preview-asset-label">
+              🎙️ Voiceover Audio Asset
+              ${
+                voStat.status === 'pending'
+                  ? '<span class="badge-pending" style="margin-left: 6px;">pending</span>'
+                  : '<span style="color: var(--success-text); font-size: 10.5px; margin-left: 6px;">✓ submitted</span>'
+              }
+            </span>
+            ${
+              voHasValidUrl
+                ? `
+              <button 
+                type="button" 
+                class="btn btn-secondary btn-sm btn-modal-download-secure" 
+                data-url="${escapeHtml(video.voiceover.url)}" 
+                data-filename="${escapeHtml(video.voiceover.name)}"
+              >
+                📥 Download Audio
+              </button>
+            `
+                : ''
+            }
+          </div>
+          ${
+            video.voiceover && voHasValidUrl
+              ? `
+            <div class="sleek-audio-card" style="padding: 10px 14px;">
+              <div class="sleek-audio-info">
+                <div class="sleek-audio-icon">🎵</div>
+                <div style="min-width: 0;">
+                  <div class="sleek-audio-name" title="${escapeHtml(video.voiceover.name)}">
+                    ${escapeHtml(video.voiceover.name)}
+                  </div>
+                  <div style="font-size: 11px; color: var(--text-muted);">Audio file ready for playback</div>
+                </div>
+              </div>
+              <audio controls src="${escapeHtml(video.voiceover.url)}" preload="none" class="sleek-audio-player"></audio>
+            </div>
+          `
+              : `
+            <div style="padding: 12px; border: 1px dashed var(--border); border-radius: 6px; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
+              <span class="badge-pending">pending</span> No voiceover file has been uploaded for this video.
+            </div>
+          `
+          }
+        </div>
+
+        <!-- 4. Thumbnail Asset -->
+        <div class="preview-asset-card">
+          <div class="preview-asset-header">
+            <span class="preview-asset-label">
+              🖼️ Thumbnail Asset
+              ${
+                thumbStat.status === 'pending'
+                  ? '<span class="badge-pending" style="margin-left: 6px;">pending</span>'
+                  : '<span style="color: var(--success-text); font-size: 10.5px; margin-left: 6px;">✓ submitted</span>'
+              }
+            </span>
+            ${
+              thumbHasValidUrl
+                ? `
+              <div style="display: flex; gap: 8px;">
+                <button 
+                  type="button" 
+                  class="btn btn-secondary btn-sm btn-modal-preview-thumb" 
+                  data-url="${escapeHtml(video.thumbnail.url)}" 
+                  data-filename="${escapeHtml(video.thumbnail.name)}"
+                >
+                  🔍 View Fullscreen
+                </button>
+                <button 
+                  type="button" 
+                  class="btn btn-secondary btn-sm btn-modal-download-secure" 
+                  data-url="${escapeHtml(video.thumbnail.url)}" 
+                  data-filename="${escapeHtml(video.thumbnail.name)}"
+                >
+                  📥 Download
+                </button>
+              </div>
+            `
+                : ''
+            }
+          </div>
+          ${
+            video.thumbnail && thumbHasValidUrl
+              ? `
+            <div class="thumbnail-preview-card" style="padding: 12px;">
+              <div 
+                class="thumbnail-img-box btn-modal-preview-thumb" 
+                data-url="${escapeHtml(video.thumbnail.url)}" 
+                data-filename="${escapeHtml(video.thumbnail.name)}"
+                style="width: 200px;"
+                title="Click to enlarge"
+              >
+                <img src="${escapeHtml(video.thumbnail.url)}" alt="thumbnail" loading="lazy" />
+                <div class="thumbnail-img-overlay">Enlarge</div>
+              </div>
+              <div class="thumbnail-meta">
+                <div style="font-size: 13px; font-weight: 600; color: var(--text-primary); word-break: break-all;">
+                  ${escapeHtml(video.thumbnail.name)}
+                </div>
+                <div style="font-size: 11.5px; color: var(--text-muted);">
+                  YouTube production thumbnail image uploaded.
+                </div>
+              </div>
+            </div>
+          `
+              : `
+            <div style="padding: 12px; border: 1px dashed var(--border); border-radius: 6px; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
+              <span class="badge-pending">pending</span> Thumbnail preview is pending upload.
+            </div>
+          `
+          }
+        </div>
+
+        <!-- 5. SEO Meta Description -->
+        <div class="preview-asset-card">
+          <div class="preview-asset-header">
+            <span class="preview-asset-label">
+              📋 SEO Meta Info / Description
+              ${
+                metaStat.status === 'pending'
+                  ? '<span class="badge-pending" style="margin-left: 6px;">pending</span>'
+                  : '<span style="color: var(--success-text); font-size: 10.5px; margin-left: 6px;">✓ submitted</span>'
+              }
+            </span>
+            <button 
+              type="button" 
+              class="btn btn-secondary btn-sm btn-modal-copy" 
+              data-copy-text="${encodeURIComponent(video.metaInfo || '')}" 
+              ${!video.metaInfo ? 'disabled' : ''}
+            >
+              Copy Meta
+            </button>
+          </div>
+          ${
+            video.metaInfo && video.metaInfo.trim()
+              ? `<div class="preview-text-box">${escapeHtml(video.metaInfo)}</div>`
+              : `
+            <div style="padding: 12px; border: 1px dashed var(--border); border-radius: 6px; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
+              <span class="badge-pending">pending</span> No SEO meta description submitted yet.
+            </div>
+          `
+          }
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="yta-modal-footer" style="padding: 14px 22px; justify-content: space-between;">
+        <div style="font-size: 11.5px; color: var(--text-muted);">
+          To upload or modify files for this video, use the Direct Submission page.
+        </div>
+        <div style="display: flex; gap: 10px;">
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-modal-close-action">
+            Close
+          </button>
+          <button type="button" class="btn btn-primary btn-sm" id="btn-modal-goto-submit" style="background: var(--cta-orange); color: #000; font-weight: 700;">
+            Upload / Submit Assets ➔
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(backdrop);
+
+  // Wire events
+  backdrop.querySelector('#btn-close-preview-modal').addEventListener('click', closeModal);
+  backdrop.querySelector('#btn-modal-close-action').addEventListener('click', closeModal);
+
+  // Goto submit page preselecting this video
+  const gotoSubmitBtn = backdrop.querySelector('#btn-modal-goto-submit');
+  if (gotoSubmitBtn && currentChannel) {
+    gotoSubmitBtn.addEventListener('click', () => {
+      sessionStorage.setItem('yta_admin_submit_video_num', String(video.videoNumber));
+      localStorage.setItem('yta_admin_submit_channel_id', currentChannel.id);
+      closeModal();
+      navigate('#/admin/submit');
+    });
+  }
+
+  // Copy buttons
+  backdrop.querySelectorAll('.btn-modal-copy').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      const raw = decodeURIComponent(e.target.dataset.copyText || '');
+      if (!raw) return;
+      try {
+        await navigator.clipboard.writeText(raw);
+        const original = e.target.textContent;
+        e.target.textContent = 'Copied';
+        setTimeout(() => {
+          e.target.textContent = original;
+        }, 1200);
+      } catch (err) {
+        console.error('Copy failed:', err);
+      }
+    });
+  });
+
+  // Secure download
+  backdrop.querySelectorAll('.btn-modal-download-secure').forEach((btn) => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const url = btn.dataset.url;
+      const filename = btn.dataset.filename || 'download';
+      const origText = btn.innerHTML;
+      btn.textContent = 'Downloading...';
+      btn.disabled = true;
+      try {
+        await downloadFileSecurely(url, filename);
+      } catch (err) {
+        console.error('Download failed:', err);
+      } finally {
+        btn.innerHTML = origText;
+        btn.disabled = false;
+      }
+    });
+  });
+
+  // Thumbnail preview modal
+  backdrop.querySelectorAll('.btn-modal-preview-thumb').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const url = btn.dataset.url;
+      const filename = btn.dataset.filename || 'thumbnail.png';
+      if (url) openThumbnailModal(url, filename);
+    });
+  });
+}
+
 export function renderAdminProductionTableView(container, navigate) {
   let selectedChannelId = localStorage.getItem('yta_selected_channel_id') || '';
-  let currentView = localStorage.getItem('yta_pipeline_view') || 'master-detail';
-  let activeVideoId = localStorage.getItem('yta_md_active_video') || '';
-  let searchQuery = '';
+  // Default view is now Kanban Pipeline View!
+  let currentView = localStorage.getItem('yta_pipeline_view') || 'kanban';
+  if (currentView === 'master-detail') {
+    currentView = 'kanban';
+  }
+
   let selectedVideoIds = new Set();
   let expandedAccordionIds = new Set();
   let notificationBanner = '';
-  let detailFeedback = null; // { type: 'success' | 'error', text: string }
 
   function render() {
     const state = store.getState();
@@ -68,28 +410,6 @@ export function renderAdminProductionTableView(container, navigate) {
     const channelVideos = currentChannel
       ? state.videos.filter((v) => v.channelId === selectedChannelId).sort((a, b) => a.videoNumber - b.videoNumber)
       : [];
-
-    // Ensure active video is valid in current channel
-    if (channelVideos.length > 0) {
-      if (!activeVideoId || !channelVideos.some((v) => v.id === activeVideoId)) {
-        activeVideoId = channelVideos[0].id;
-        localStorage.setItem('yta_md_active_video', activeVideoId);
-      }
-    } else {
-      activeVideoId = '';
-    }
-
-    const activeVideo = channelVideos.find((v) => v.id === activeVideoId) || null;
-
-    // Filtered videos for list search
-    const filteredVideos = channelVideos.filter((v) => {
-      if (!searchQuery.trim()) return true;
-      const q = searchQuery.toLowerCase().trim();
-      return (
-        String(v.videoNumber).includes(q) ||
-        (v.title && v.title.toLowerCase().includes(q))
-      );
-    });
 
     const areAllSelected =
       channelVideos.length > 0 && channelVideos.every((v) => selectedVideoIds.has(v.id));
@@ -122,439 +442,7 @@ export function renderAdminProductionTableView(container, navigate) {
 
     // --- VIEW GENERATORS ---
 
-    // 1. MASTER-DETAIL VIEW (Default Primary View)
-    function renderMasterDetailView() {
-      if (channelVideos.length === 0) return '';
-
-      // Left sidebar video list items
-      const listItemsHtml = filteredVideos
-        .map((video) => {
-          const isActive = video.id === activeVideoId;
-          const isSelected = selectedVideoIds.has(video.id);
-
-          const scriptStat = store.getCellStatus(video, 'script');
-          const voStat = store.getCellStatus(video, 'voiceover');
-          const thumbStat = store.getCellStatus(video, 'thumbnail');
-          const metaStat = store.getCellStatus(video, 'metaInfo');
-
-          return `
-            <div class="md-video-item ${isActive ? 'active' : ''}" data-video-id="${video.id}">
-              <input 
-                type="checkbox" 
-                class="video-select-check" 
-                data-video-id="${video.id}" 
-                ${isSelected ? 'checked' : ''} 
-                title="Select for notification"
-                style="cursor: pointer; width: 14px; height: 14px; flex-shrink: 0;"
-              />
-              <div class="md-video-meta" data-select-row="${video.id}">
-                <div class="md-video-top-line">
-                  <span class="md-video-num">Video ${video.videoNumber}</span>
-                  ${
-                    video.status
-                      ? '<span style="color: var(--cta-orange); font-size: 11px; font-weight: 700;">✓ Done</span>'
-                      : '<span style="color: var(--text-muted); font-size: 10.5px;">Pending</span>'
-                  }
-                </div>
-                <div class="md-video-title" title="${escapeHtml(video.title)}">${escapeHtml(video.title)}</div>
-                <div class="md-asset-dots">
-                  <span class="md-asset-dot ${scriptStat.status === 'pending' ? 'pending' : 'fulfilled'}" title="Script: ${scriptStat.status}">SCR</span>
-                  <span class="md-asset-dot ${voStat.status === 'pending' ? 'pending' : 'fulfilled'}" title="Voiceover: ${voStat.status}">VO</span>
-                  <span class="md-asset-dot ${thumbStat.status === 'pending' ? 'pending' : 'fulfilled'}" title="Thumbnail: ${thumbStat.status}">THM</span>
-                  <span class="md-asset-dot ${metaStat.status === 'pending' ? 'pending' : 'fulfilled'}" title="Meta Info: ${metaStat.status}">MET</span>
-                </div>
-              </div>
-              <input 
-                type="checkbox" 
-                class="video-status-check" 
-                data-video-id="${video.id}" 
-                ${video.status ? 'checked' : ''} 
-                title="Mark status complete"
-                style="cursor: pointer; width: 15px; height: 15px; flex-shrink: 0;"
-              />
-            </div>
-          `;
-        })
-        .join('');
-
-      // Right detail panel for active video
-      let detailContentHtml = '';
-
-      if (!activeVideo) {
-        detailContentHtml = `
-          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); text-align: center; padding: 40px;">
-            <div style="font-size: 36px; margin-bottom: 12px;">📑</div>
-            <h3 style="color: var(--text-primary); margin-bottom: 6px;">Select a Video from the Left Sidebar</h3>
-            <p style="font-size: 13px; max-width: 380px;">Choose any video entry to view its script, listen to voiceover audio, preview thumbnails, and edit metadata.</p>
-          </div>
-        `;
-      } else {
-        const titleStat = store.getCellStatus(activeVideo, 'title');
-        const scriptStat = store.getCellStatus(activeVideo, 'script');
-        const voStat = store.getCellStatus(activeVideo, 'voiceover');
-        const thumbStat = store.getCellStatus(activeVideo, 'thumbnail');
-        const metaStat = store.getCellStatus(activeVideo, 'metaInfo');
-
-        const voHasValidUrl = Boolean(activeVideo.voiceover?.url && activeVideo.voiceover.url.startsWith('http'));
-        const thumbHasValidUrl = Boolean(activeVideo.thumbnail?.url && activeVideo.thumbnail.url.startsWith('http'));
-
-        detailContentHtml = `
-          <!-- Active Video Header -->
-          <div class="md-panel-header">
-            <div class="md-panel-title-area">
-              <span class="md-video-badge">VIDEO ${activeVideo.videoNumber}</span>
-              <div>
-                <h2 style="font-size: 16px; font-weight: 700; color: var(--text-primary); margin-bottom: 2px;">
-                  ${escapeHtml(activeVideo.title)}
-                </h2>
-                <div style="font-size: 11.5px; color: var(--text-muted); display: flex; gap: 12px;">
-                  <span>Channel: <strong>${escapeHtml(currentChannel.name)}</strong></span>
-                  <span>Stage: <strong style="color: ${activeVideo.status ? 'var(--cta-orange)' : 'var(--text-secondary)'};">${escapeHtml(getVideoStage(activeVideo).replace('-', ' ').toUpperCase())}</strong></span>
-                </div>
-              </div>
-            </div>
-
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <button 
-                type="button" 
-                class="btn ${activeVideo.status ? 'btn-primary' : 'btn-secondary'} btn-sm btn-toggle-active-status" 
-                data-video-id="${activeVideo.id}"
-                style="${activeVideo.status ? 'background: var(--cta-orange); color: #000; font-weight: 700;' : ''}"
-              >
-                ${activeVideo.status ? '✓ Completed' : '⏳ Mark as Completed'}
-              </button>
-            </div>
-          </div>
-
-          ${
-            detailFeedback
-              ? `
-            <div class="feedback-alert ${detailFeedback.type === 'success' ? 'feedback-success' : 'feedback-error'}" style="margin: 0; padding: 10px 14px; font-size: 12.5px;">
-              ${escapeHtml(detailFeedback.text)}
-            </div>
-          `
-              : ''
-          }
-
-          <!-- 1. Title Field (Editable Input) -->
-          <div class="md-detail-card">
-            <div class="md-card-header">
-              <span class="md-card-label">
-                <span>🏷️</span> Video Title
-              </span>
-              <div class="md-card-actions">
-                <button type="button" class="btn btn-secondary btn-sm btn-copy" data-copy-text="${encodeURIComponent(activeVideo.title)}">
-                  Copy
-                </button>
-                <button type="button" class="btn btn-primary btn-sm btn-save-detail-title" data-video-id="${activeVideo.id}">
-                  Save Title
-                </button>
-              </div>
-            </div>
-            <input 
-              type="text" 
-              id="md-input-title" 
-              class="md-title-input" 
-              value="${escapeHtml(activeVideo.title)}" 
-              placeholder="Enter video title..." 
-            />
-          </div>
-
-          <!-- 2. Script Box (Spacious Textarea with Copy) -->
-          <div class="md-detail-card">
-            <div class="md-card-header">
-              <span class="md-card-label">
-                <span>📝</span> Video Script
-                ${
-                  scriptStat.status === 'pending'
-                    ? '<span class="badge-pending" style="margin-left: 6px;">pending</span>'
-                    : '<span style="color: var(--success-text); font-size: 11px; margin-left: 6px;">✓ submitted</span>'
-                }
-              </span>
-              <div class="md-card-actions">
-                <button 
-                  type="button" 
-                  class="btn btn-secondary btn-sm btn-copy" 
-                  data-copy-text="${encodeURIComponent(activeVideo.script || '')}"
-                  ${!activeVideo.script ? 'disabled' : ''}
-                >
-                  Copy Script
-                </button>
-                <button type="button" class="btn btn-primary btn-sm btn-save-detail-script" data-video-id="${activeVideo.id}">
-                  Save Script
-                </button>
-              </div>
-            </div>
-            <textarea 
-              id="md-textarea-script" 
-              class="md-textarea" 
-              rows="7" 
-              placeholder="${scriptStat.status === 'pending' ? 'No script submitted yet. You can paste or draft the script here...' : 'Edit video script...'}"
-            >${escapeHtml(activeVideo.script || '')}</textarea>
-          </div>
-
-          <!-- 3. Voiceover Row (Custom Sleek Audio Player + Download) -->
-          <div class="md-detail-card">
-            <div class="md-card-header">
-              <span class="md-card-label">
-                <span>🎙️</span> Voiceover Audio Asset
-                ${
-                  voStat.status === 'pending'
-                    ? '<span class="badge-pending" style="margin-left: 6px;">pending</span>'
-                    : '<span style="color: var(--success-text); font-size: 11px; margin-left: 6px;">✓ submitted</span>'
-                }
-              </span>
-              ${
-                voHasValidUrl
-                  ? `
-                <button 
-                  type="button" 
-                  class="btn btn-secondary btn-sm btn-download-secure" 
-                  data-url="${escapeHtml(activeVideo.voiceover.url)}" 
-                  data-filename="${escapeHtml(activeVideo.voiceover.name)}" 
-                  title="Download voiceover"
-                >
-                  📥 Download Audio
-                </button>
-              `
-                  : ''
-              }
-            </div>
-
-            ${
-              activeVideo.voiceover && voHasValidUrl
-                ? `
-              <div class="sleek-audio-card">
-                <div class="sleek-audio-info">
-                  <div class="sleek-audio-icon">🎵</div>
-                  <div style="min-width: 0;">
-                    <div class="sleek-audio-name" title="${escapeHtml(activeVideo.voiceover.name)}">
-                      ${escapeHtml(activeVideo.voiceover.name)}
-                    </div>
-                    <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-                      Audio format ready for production
-                    </div>
-                  </div>
-                </div>
-                <audio controls src="${escapeHtml(activeVideo.voiceover.url)}" preload="none" class="sleek-audio-player"></audio>
-              </div>
-            `
-                : `
-              <div style="padding: 18px; border: 1px dashed var(--border); border-radius: 8px; background: rgba(0,0,0,0.2); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                  <span class="badge-pending">pending</span>
-                  <span style="font-size: 12.5px; color: var(--text-muted);">No voiceover file has been uploaded for Video ${activeVideo.videoNumber} yet.</span>
-                </div>
-                <button type="button" class="btn btn-secondary btn-sm btn-goto-submit" data-task="Voiceover">
-                  Upload Voiceover
-                </button>
-              </div>
-            `
-            }
-          </div>
-
-          <!-- 4. Thumbnail Section (Image Preview or Pending Badge) -->
-          <div class="md-detail-card">
-            <div class="md-card-header">
-              <span class="md-card-label">
-                <span>🖼️</span> Thumbnail Preview & Asset
-                ${
-                  thumbStat.status === 'pending'
-                    ? '<span class="badge-pending" style="margin-left: 6px;">pending</span>'
-                    : '<span style="color: var(--success-text); font-size: 11px; margin-left: 6px;">✓ submitted</span>'
-                }
-              </span>
-              ${
-                thumbHasValidUrl
-                  ? `
-                <div class="md-card-actions">
-                  <button 
-                    type="button" 
-                    class="btn btn-secondary btn-sm btn-preview-thumbnail" 
-                    data-url="${escapeHtml(activeVideo.thumbnail.url)}" 
-                    data-filename="${escapeHtml(activeVideo.thumbnail.name)}"
-                  >
-                    🔍 View Fullscreen
-                  </button>
-                  <button 
-                    type="button" 
-                    class="btn btn-secondary btn-sm btn-download-secure" 
-                    data-url="${escapeHtml(activeVideo.thumbnail.url)}" 
-                    data-filename="${escapeHtml(activeVideo.thumbnail.name)}"
-                  >
-                    📥 Download
-                  </button>
-                </div>
-              `
-                  : ''
-              }
-            </div>
-
-            ${
-              activeVideo.thumbnail && thumbHasValidUrl
-                ? `
-              <div class="thumbnail-preview-card">
-                <div 
-                  class="thumbnail-img-box btn-preview-thumbnail" 
-                  data-url="${escapeHtml(activeVideo.thumbnail.url)}" 
-                  data-filename="${escapeHtml(activeVideo.thumbnail.name)}"
-                  title="Click to view full size"
-                >
-                  <img src="${escapeHtml(activeVideo.thumbnail.url)}" alt="thumbnail" loading="lazy" />
-                  <div class="thumbnail-img-overlay">Click to Enlarge</div>
-                </div>
-                <div class="thumbnail-meta">
-                  <div style="font-size: 13.5px; font-weight: 600; color: var(--text-primary); word-break: break-all;">
-                    ${escapeHtml(activeVideo.thumbnail.name)}
-                  </div>
-                  <div style="font-size: 11.5px; color: var(--text-muted); line-height: 1.5;">
-                    High-resolution YouTube thumbnail image uploaded and ready for publication.
-                  </div>
-                  <div style="display: flex; gap: 8px; margin-top: 4px;">
-                    <button 
-                      type="button" 
-                      class="btn btn-secondary btn-sm btn-preview-thumbnail" 
-                      data-url="${escapeHtml(activeVideo.thumbnail.url)}" 
-                      data-filename="${escapeHtml(activeVideo.thumbnail.name)}"
-                    >
-                      Enlarge Preview
-                    </button>
-                  </div>
-                </div>
-              </div>
-            `
-                : `
-              <div style="padding: 18px; border: 1px dashed var(--border); border-radius: 8px; background: rgba(0,0,0,0.2); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-                <div style="display: flex; align-items: center; gap: 10px;">
-                  <span class="badge-pending">pending</span>
-                  <span style="font-size: 12.5px; color: var(--text-muted);">Thumbnail asset is pending upload for this video.</span>
-                </div>
-                <button type="button" class="btn btn-secondary btn-sm btn-goto-submit" data-task="Thumbnail">
-                  Upload Thumbnail
-                </button>
-              </div>
-            `
-            }
-          </div>
-
-          <!-- 5. Meta Info Field (Spacious Textarea for SEO Description) -->
-          <div class="md-detail-card">
-            <div class="md-card-header">
-              <span class="md-card-label">
-                <span>📋</span> Meta Info / SEO Description
-                ${
-                  metaStat.status === 'pending'
-                    ? '<span class="badge-pending" style="margin-left: 6px;">pending</span>'
-                    : '<span style="color: var(--success-text); font-size: 11px; margin-left: 6px;">✓ submitted</span>'
-                }
-              </span>
-              <div class="md-card-actions">
-                <button 
-                  type="button" 
-                  class="btn btn-secondary btn-sm btn-copy" 
-                  data-copy-text="${encodeURIComponent(activeVideo.metaInfo || '')}"
-                  ${!activeVideo.metaInfo ? 'disabled' : ''}
-                >
-                  Copy Description
-                </button>
-                <button type="button" class="btn btn-primary btn-sm btn-save-detail-meta" data-video-id="${activeVideo.id}">
-                  Save Meta Info
-                </button>
-              </div>
-            </div>
-            <textarea 
-              id="md-textarea-meta" 
-              class="md-textarea" 
-              rows="6" 
-              placeholder="${metaStat.status === 'pending' ? 'No SEO description or tags submitted yet. Paste YouTube description, hashtags, and metadata here...' : 'Edit YouTube meta description and SEO copy...'}"
-            >${escapeHtml(activeVideo.metaInfo || '')}</textarea>
-          </div>
-
-          <!-- 6. Status Section (Quick Status Controls & Stage Summary) -->
-          <div class="md-detail-card">
-            <div class="md-card-header">
-              <span class="md-card-label">
-                <span>⚡</span> Production Status & State
-              </span>
-            </div>
-            <div class="status-action-box">
-              <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
-                <div>
-                  <div style="font-size: 13.5px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px;">
-                    Current Status:
-                  </div>
-                  <div style="font-size: 12px; color: var(--text-muted);">
-                    Toggle completion to reflect in reports, notifications, and pipeline analytics.
-                  </div>
-                </div>
-                ${
-                  activeVideo.status
-                    ? '<span class="status-pill-completed">✓ Completed</span>'
-                    : '<span class="status-pill-pending">⏳ In Progress</span>'
-                }
-              </div>
-
-              <div style="display: flex; gap: 10px;">
-                <button 
-                  type="button" 
-                  class="btn ${activeVideo.status ? 'btn-secondary' : 'btn-primary'} btn-toggle-active-status" 
-                  data-video-id="${activeVideo.id}"
-                  style="${!activeVideo.status ? 'background: var(--cta-orange); color: #000; font-weight: 700;' : ''}"
-                >
-                  ${activeVideo.status ? 'Mark In Progress' : '✓ Mark as Completed'}
-                </button>
-              </div>
-            </div>
-          </div>
-        `;
-      }
-
-      return `
-        <div class="pipeline-master-detail">
-          <!-- Left Sidebar (30%) -->
-          <div class="md-left-sidebar">
-            <div class="md-sidebar-header">
-              <div class="md-search-box">
-                <span class="md-search-icon">🔍</span>
-                <input 
-                  type="text" 
-                  id="md-search-input" 
-                  class="md-search-input" 
-                  placeholder="Filter videos (e.g. 1 or title)..." 
-                  value="${escapeHtml(searchQuery)}"
-                />
-              </div>
-              <div class="md-sidebar-controls">
-                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none;">
-                  <input 
-                    type="checkbox" 
-                    id="check-all-videos-md" 
-                    ${areAllSelected ? 'checked' : ''} 
-                    style="cursor: pointer; width: 14px; height: 14px;" 
-                  />
-                  <span>Select All (${channelVideos.length})</span>
-                </label>
-                <span>Showing ${filteredVideos.length}</span>
-              </div>
-            </div>
-            <div class="md-video-list">
-              ${
-                filteredVideos.length > 0
-                  ? listItemsHtml
-                  : '<div style="padding: 24px; text-align: center; color: var(--text-muted); font-size: 12px;">No matching videos found</div>'
-              }
-            </div>
-          </div>
-
-          <!-- Right Detail Panel (70%) -->
-          <div class="md-right-panel">
-            ${detailContentHtml}
-          </div>
-        </div>
-      `;
-    }
-
-    // 2. KANBAN PIPELINE VIEW
+    // 1. KANBAN PIPELINE VIEW (Default Primary View)
     function renderKanbanView() {
       if (channelVideos.length === 0) return '';
 
@@ -591,10 +479,13 @@ export function renderAdminProductionTableView(container, navigate) {
               const thumbStat = store.getCellStatus(video, 'thumbnail');
               const metaStat = store.getCellStatus(video, 'metaInfo');
 
-              const thumbUrl = video.thumbnail?.url && video.thumbnail.url.startsWith('http') ? video.thumbnail.url : null;
+              const thumbUrl =
+                video.thumbnail?.url && video.thumbnail.url.startsWith('http')
+                  ? video.thumbnail.url
+                  : null;
 
               return `
-                <div class="kanban-card" draggable="true" data-video-id="${video.id}">
+                <div class="kanban-card" draggable="true" data-video-id="${video.id}" title="Click to view details & assets">
                   <div class="kanban-card-top">
                     <span class="md-video-num">Video ${video.videoNumber}</span>
                     <input 
@@ -638,11 +529,11 @@ export function renderAdminProductionTableView(container, navigate) {
                     </span>
                     <button 
                       type="button" 
-                      class="btn btn-secondary btn-sm btn-open-in-md" 
+                      class="btn btn-secondary btn-sm btn-open-preview" 
                       data-video-id="${video.id}" 
-                      style="padding: 2px 7px; font-size: 10.5px;"
+                      style="padding: 2px 8px; font-size: 10.5px;"
                     >
-                      Edit Detail ➔
+                      🔍 View Assets
                     </button>
                   </div>
                 </div>
@@ -677,7 +568,7 @@ export function renderAdminProductionTableView(container, navigate) {
       `;
     }
 
-    // 3. COMPACT TABLE VIEW (With Accordion Expandable Rows)
+    // 2. COMPACT TABLE VIEW (With Accordion Expandable Rows)
     function renderCompactTableView() {
       if (channelVideos.length === 0) return '';
 
@@ -822,15 +713,20 @@ export function renderAdminProductionTableView(container, navigate) {
                   <div style="display: flex; flex-direction: column; justify-content: space-between; gap: 10px;">
                     <div>
                       <span style="font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; display: block; margin-bottom: 8px;">
-                        ⚡ Quick Navigation
+                        ⚡ Quick Actions
                       </span>
                       <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 10px;">
-                        Open this video in the Master-Detail editor for complete audio, image, and text editing.
+                        Open full preview inspection or submit assets directly in Direct Submission.
                       </p>
                     </div>
-                    <button type="button" class="btn btn-primary btn-sm btn-open-in-md" data-video-id="${video.id}" style="align-self: flex-start;">
-                      Edit in Master-Detail ➔
-                    </button>
+                    <div style="display: flex; gap: 8px;">
+                      <button type="button" class="btn btn-secondary btn-sm btn-open-preview" data-video-id="${video.id}">
+                        🔍 Open Preview
+                      </button>
+                      <button type="button" class="btn btn-primary btn-sm btn-goto-submit-for-vid" data-video-num="${video.videoNumber}">
+                        Upload / Edit ➔
+                      </button>
+                    </div>
                   </div>
                 </div>
               </td>
@@ -915,12 +811,10 @@ export function renderAdminProductionTableView(container, navigate) {
         </div>
       `;
     } else {
-      if (currentView === 'kanban') {
-        mainContentHtml = renderKanbanView();
-      } else if (currentView === 'compact-table') {
+      if (currentView === 'compact-table') {
         mainContentHtml = renderCompactTableView();
       } else {
-        mainContentHtml = renderMasterDetailView();
+        mainContentHtml = renderKanbanView();
       }
     }
 
@@ -929,7 +823,7 @@ export function renderAdminProductionTableView(container, navigate) {
       <div class="main-content" style="max-width: 1500px;">
         ${notificationBanner ? `<div class="notification-banner">${escapeHtml(notificationBanner)}</div>` : ''}
 
-        <!-- Top Control & View-Switcher Bar -->
+        <!-- Top Control Bar with 2-State Segmented View Switcher -->
         <div class="card" style="display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 14px; padding: 16px 20px;">
           <div style="flex: 1; min-width: 240px;">
             <label for="select-prod-channel" class="section-label" style="margin-bottom: 6px;">Selected YouTube Channel</label>
@@ -938,22 +832,10 @@ export function renderAdminProductionTableView(container, navigate) {
             </select>
           </div>
 
-          <!-- View Switching Control (Top Right) -->
+          <!-- View Switching Control: Kanban Pipeline (Default) & Compact Table -->
           <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
             <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
               <div class="view-toggle-group" role="tablist" aria-label="Dashboard Views">
-                <button 
-                  type="button" 
-                  class="view-toggle-btn ${currentView === 'master-detail' ? 'active' : ''}" 
-                  data-view="master-detail" 
-                  role="tab" 
-                  aria-selected="${currentView === 'master-detail'}"
-                  title="Split Master-Detail Workspace"
-                >
-                  <span class="view-icon">📑</span>
-                  <span>Master-Detail View</span>
-                </button>
-
                 <button 
                   type="button" 
                   class="view-toggle-btn ${currentView === 'kanban' ? 'active' : ''}" 
@@ -1006,7 +888,7 @@ export function renderAdminProductionTableView(container, navigate) {
             : ''
         }
 
-        <!-- Active View Layout (Master-Detail, Kanban, or Compact Table) -->
+        <!-- Active View Layout (Kanban or Compact Table) -->
         ${mainContentHtml}
       </div>
     `;
@@ -1021,7 +903,6 @@ export function renderAdminProductionTableView(container, navigate) {
         localStorage.setItem('yta_selected_channel_id', selectedChannelId);
         selectedVideoIds.clear();
         notificationBanner = '';
-        detailFeedback = null;
         render();
       });
     }
@@ -1033,30 +914,15 @@ export function renderAdminProductionTableView(container, navigate) {
         if (viewMode && viewMode !== currentView) {
           currentView = viewMode;
           localStorage.setItem('yta_pipeline_view', currentView);
-          detailFeedback = null;
           render();
         }
       });
     });
 
-    // 3. Select All Videos Checkbox (Compact Table & Master-Detail)
+    // 3. Select All Videos Checkbox
     const checkAllCb = container.querySelector('#check-all-videos');
     if (checkAllCb) {
       checkAllCb.addEventListener('change', (e) => {
-        if (e.target.checked) {
-          channelVideos.forEach((v) => selectedVideoIds.add(v.id));
-        } else {
-          selectedVideoIds.clear();
-        }
-        const warn = container.querySelector('#select-videos-warning');
-        if (warn) warn.style.display = 'none';
-        render();
-      });
-    }
-
-    const checkAllMd = container.querySelector('#check-all-videos-md');
-    if (checkAllMd) {
-      checkAllMd.addEventListener('change', (e) => {
         if (e.target.checked) {
           channelVideos.forEach((v) => selectedVideoIds.add(v.id));
         } else {
@@ -1116,149 +982,44 @@ export function renderAdminProductionTableView(container, navigate) {
       });
     }
 
-    // 6. Master-Detail Search Input
-    const searchInp = container.querySelector('#md-search-input');
-    if (searchInp) {
-      searchInp.addEventListener('input', (e) => {
-        searchQuery = e.target.value;
-        const listEl = container.querySelector('.md-video-list');
-        if (listEl) {
-          // Re-render list section dynamically or trigger render
-          render();
-          const newInp = container.querySelector('#md-search-input');
-          if (newInp) {
-            newInp.focus();
-            newInp.setSelectionRange(searchQuery.length, searchQuery.length);
-          }
-        }
-      });
-    }
-
-    // 7. Master-Detail Row Selection
-    container.querySelectorAll('[data-select-row]').forEach((el) => {
-      el.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const vidId = el.dataset.selectRow;
-        if (vidId && vidId !== activeVideoId) {
-          activeVideoId = vidId;
-          localStorage.setItem('yta_md_active_video', activeVideoId);
-          detailFeedback = null;
-          render();
-        }
-      });
-    });
-
-    // 8. Video Status Checkbox (Universal)
+    // 6. Video Status Checkbox (Universal)
     container.querySelectorAll('.video-status-check').forEach((cb) => {
       cb.addEventListener('change', async (e) => {
+        e.stopPropagation();
         const vidId = e.target.dataset.videoId;
         await store.toggleVideoStatus(vidId);
         render();
       });
     });
 
-    // 9. Master-Detail Active Video Status Toggle Button
-    container.querySelectorAll('.btn-toggle-active-status').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const vidId = btn.dataset.videoId;
-        if (vidId) {
-          await store.toggleVideoStatus(vidId);
-          render();
+    // 7. Open Video Details Preview Modal (from Kanban Card or button)
+    container.querySelectorAll('.kanban-card').forEach((card) => {
+      card.addEventListener('click', (e) => {
+        // Prevent opening if clicking on the status checkbox directly
+        if (e.target.closest('.video-status-check')) return;
+        const vidId = card.dataset.videoId;
+        const vid = channelVideos.find((v) => v.id === vidId);
+        if (vid && currentChannel) {
+          openKanbanVideoPreviewModal(vid, currentChannel, navigate);
         }
       });
     });
 
-    // 10. Master-Detail Title Save
-    const saveTitleBtn = container.querySelector('.btn-save-detail-title');
-    if (saveTitleBtn) {
-      saveTitleBtn.addEventListener('click', async () => {
-        const vidId = saveTitleBtn.dataset.videoId;
-        const titleInp = container.querySelector('#md-input-title');
-        const newTitle = titleInp ? titleInp.value.trim() : '';
-
-        if (!newTitle) {
-          detailFeedback = { type: 'error', text: 'Video title cannot be empty.' };
-          render();
-          return;
+    container.querySelectorAll('.btn-open-preview').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const vidId = btn.dataset.videoId;
+        const vid = channelVideos.find((v) => v.id === vidId);
+        if (vid && currentChannel) {
+          openKanbanVideoPreviewModal(vid, currentChannel, navigate);
         }
-
-        saveTitleBtn.disabled = true;
-        saveTitleBtn.textContent = 'Saving...';
-        const res = await store.updateVideoTitle(vidId, newTitle);
-        if (res.success) {
-          detailFeedback = { type: 'success', text: '✓ Title updated successfully.' };
-        } else {
-          detailFeedback = { type: 'error', text: `Failed to update title: ${res.error}` };
-        }
-        render();
       });
-    }
+    });
 
-    // 11. Master-Detail Script Save
-    const saveScriptBtn = container.querySelector('.btn-save-detail-script');
-    if (saveScriptBtn && activeVideo && currentChannel) {
-      saveScriptBtn.addEventListener('click', async () => {
-        const scriptArea = container.querySelector('#md-textarea-script');
-        const newScript = scriptArea ? scriptArea.value.trim() : '';
-
-        if (!newScript) {
-          detailFeedback = { type: 'error', text: 'Script cannot be empty.' };
-          render();
-          return;
-        }
-
-        saveScriptBtn.disabled = true;
-        saveScriptBtn.textContent = 'Saving...';
-        const res = await store.submitContent({
-          channelId: currentChannel.id,
-          videoNumber: activeVideo.videoNumber,
-          task: 'Script',
-          textValue: newScript
-        });
-
-        if (res.success) {
-          detailFeedback = { type: 'success', text: '✓ Script updated and saved to database.' };
-        } else {
-          detailFeedback = { type: 'error', text: `Failed to save script: ${res.error}` };
-        }
-        render();
-      });
-    }
-
-    // 12. Master-Detail Meta Info Save
-    const saveMetaBtn = container.querySelector('.btn-save-detail-meta');
-    if (saveMetaBtn && activeVideo && currentChannel) {
-      saveMetaBtn.addEventListener('click', async () => {
-        const metaArea = container.querySelector('#md-textarea-meta');
-        const newMeta = metaArea ? metaArea.value.trim() : '';
-
-        if (!newMeta) {
-          detailFeedback = { type: 'error', text: 'SEO Meta description cannot be empty.' };
-          render();
-          return;
-        }
-
-        saveMetaBtn.disabled = true;
-        saveMetaBtn.textContent = 'Saving...';
-        const res = await store.submitContent({
-          channelId: currentChannel.id,
-          videoNumber: activeVideo.videoNumber,
-          task: 'Meta Info',
-          textValue: newMeta
-        });
-
-        if (res.success) {
-          detailFeedback = { type: 'success', text: '✓ SEO Meta Info updated and saved to database.' };
-        } else {
-          detailFeedback = { type: 'error', text: `Failed to save meta info: ${res.error}` };
-        }
-        render();
-      });
-    }
-
-    // 13. Copy Buttons
+    // 8. Copy Buttons in Table
     container.querySelectorAll('.btn-copy').forEach((btn) => {
       btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
         const raw = decodeURIComponent(e.target.dataset.copyText || '');
         if (!raw) return;
         try {
@@ -1274,7 +1035,7 @@ export function renderAdminProductionTableView(container, navigate) {
       });
     });
 
-    // 14. Thumbnail Preview Modal
+    // 9. Thumbnail Preview Modal in Table
     container.querySelectorAll('.btn-preview-thumbnail').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.preventDefault();
@@ -1287,7 +1048,7 @@ export function renderAdminProductionTableView(container, navigate) {
       });
     });
 
-    // 15. Secure File Download
+    // 10. Secure File Download in Table
     container.querySelectorAll('.btn-download-secure').forEach((btn) => {
       btn.addEventListener('click', async (e) => {
         e.preventDefault();
@@ -1308,7 +1069,7 @@ export function renderAdminProductionTableView(container, navigate) {
       });
     });
 
-    // 16. Compact Table Accordion Toggle
+    // 11. Compact Table Accordion Toggle
     container.querySelectorAll('.btn-accordion-toggle').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1322,29 +1083,20 @@ export function renderAdminProductionTableView(container, navigate) {
       });
     });
 
-    // 17. Switch to Master-Detail with Selected Video (from Kanban or Compact Table)
-    container.querySelectorAll('.btn-open-in-md').forEach((btn) => {
+    // 12. Accordion Quick Link to Direct Submission
+    container.querySelectorAll('.btn-goto-submit-for-vid').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const vidId = btn.dataset.videoId;
-        if (vidId) {
-          activeVideoId = vidId;
-          localStorage.setItem('yta_md_active_video', activeVideoId);
-          currentView = 'master-detail';
-          localStorage.setItem('yta_pipeline_view', currentView);
-          render();
+        const vNum = btn.dataset.videoNum;
+        if (vNum && currentChannel) {
+          sessionStorage.setItem('yta_admin_submit_video_num', String(vNum));
+          localStorage.setItem('yta_admin_submit_channel_id', currentChannel.id);
+          navigate('#/admin/submit');
         }
       });
     });
 
-    // 18. Quick Redirect to Submit View for Missing Assets
-    container.querySelectorAll('.btn-goto-submit').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        navigate('#/admin/submit');
-      });
-    });
-
-    // 19. Empty State Buttons
+    // 13. Empty State Buttons
     const emptyGotoChan = container.querySelector('#empty-goto-channel');
     if (emptyGotoChan) {
       emptyGotoChan.addEventListener('click', () => navigate('#/admin/channels'));
@@ -1355,7 +1107,7 @@ export function renderAdminProductionTableView(container, navigate) {
       emptyGotoTitles.addEventListener('click', () => navigate('#/admin/titles'));
     }
 
-    // 20. Kanban Drag and Drop Pipeline Handling
+    // 14. Kanban Drag and Drop Pipeline Handling
     const kanbanCols = container.querySelectorAll('.kanban-col');
     const kanbanCards = container.querySelectorAll('.kanban-card');
 
@@ -1391,7 +1143,6 @@ export function renderAdminProductionTableView(container, navigate) {
           if (targetLane === 'completed') {
             await store.setVideoStatus(vidId, true);
           } else {
-            // Dragged to a pending/in-progress lane
             await store.setVideoStatus(vidId, false);
           }
           render();
@@ -1402,7 +1153,6 @@ export function renderAdminProductionTableView(container, navigate) {
 
   // Subscribe to external store changes
   const unsubscribe = store.subscribe(() => {
-    // Only re-render if container is still connected to document
     if (container.isConnected) {
       render();
     }
