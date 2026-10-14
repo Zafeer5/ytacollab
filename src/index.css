@@ -2684,3 +2684,730 @@ tr.row-selected td {
   border-radius: 8px;
   border: 1px solid var(--border);
 }
+
+/* ==========================================================================
+   VIDEO PIPELINE DASHBOARD - MULTI-VIEW ARCHITECTURE
+   ========================================================================== */
+
+/* Top View Toggle Segmented Control */
+.view-toggle-group {
+  display: inline-flex;
+  align-items: center;
+  background: #0d0d0d;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 3px;
+}
+
+.view-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.view-toggle-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.view-toggle-btn.active {
+  background: #1e1e24;
+  color: #fff;
+  border-color: rgba(255, 122, 0, 0.4);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.view-toggle-btn.active .view-icon {
+  color: var(--cta-orange);
+}
+
+/* --------------------------------------------------------------------------
+   1. MASTER-DETAIL VIEW (SPLIT SCREEN LAYOUT)
+   -------------------------------------------------------------------------- */
+.pipeline-master-detail {
+  display: flex;
+  gap: 0;
+  width: 100%;
+  min-height: 680px;
+  background: #0d0d0d;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+
+/* Left Sidebar (30%) */
+.md-left-sidebar {
+  width: 30%;
+  min-width: 290px;
+  max-width: 400px;
+  background: #111115;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.md-sidebar-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  background: #141419;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.md-search-box {
+  position: relative;
+  width: 100%;
+}
+
+.md-search-input {
+  width: 100%;
+  background: #0d0d0d;
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 7px 10px 7px 30px;
+  border-radius: 6px;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+
+.md-search-input:focus {
+  border-color: var(--cta-orange);
+}
+
+.md-search-icon {
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 13px;
+  color: var(--text-muted);
+  pointer-events: none;
+}
+
+.md-sidebar-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.md-video-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: calc(100vh - 290px);
+  min-height: 480px;
+}
+
+.md-video-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: #14141a;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  position: relative;
+}
+
+.md-video-item:hover {
+  background: #1a1a22;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.md-video-item.active {
+  background: #1c1c28;
+  border-color: rgba(255, 122, 0, 0.45);
+  box-shadow: inset 3px 0 0 var(--cta-orange), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.md-video-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.md-video-top-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.md-video-num {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--cta-orange);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.md-video-title {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.md-asset-dots {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 3px;
+}
+
+.md-asset-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.md-asset-dot.fulfilled {
+  background: rgba(74, 222, 128, 0.12);
+  color: #4ade80;
+  border: 1px solid rgba(74, 222, 128, 0.3);
+}
+
+.md-asset-dot.pending {
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+/* Right Detail Panel (70%) */
+.md-right-panel {
+  width: 70%;
+  flex: 1;
+  min-width: 0;
+  padding: 24px 28px;
+  overflow-y: auto;
+  max-height: calc(100vh - 290px);
+  min-height: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  background: #121216;
+}
+
+.md-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.md-panel-title-area {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.md-video-badge {
+  background: rgba(255, 122, 0, 0.15);
+  color: var(--cta-orange);
+  border: 1px solid rgba(255, 122, 0, 0.4);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 4px 10px;
+  border-radius: 6px;
+  letter-spacing: 0.05em;
+}
+
+.md-detail-card {
+  background: #16161c;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.md-detail-card:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.md-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.md-card-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.md-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.md-title-input {
+  width: 100%;
+  background: #0d0d0d;
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 14px;
+  border-radius: 6px;
+  outline: none;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+
+.md-title-input:focus {
+  border-color: var(--cta-orange);
+}
+
+.md-textarea {
+  width: 100%;
+  background: #0d0d0d;
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 12px 14px;
+  border-radius: 6px;
+  resize: vertical;
+  min-height: 120px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.md-textarea:focus {
+  border-color: var(--cta-orange);
+}
+
+/* Custom Sleek Audio Player Container */
+.sleek-audio-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: #0d0d0d;
+  border: 1px solid var(--border);
+  padding: 12px 16px;
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+
+.sleek-audio-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.sleek-audio-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: rgba(255, 122, 0, 0.12);
+  color: var(--cta-orange);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.sleek-audio-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sleek-audio-player {
+  height: 36px;
+  max-width: 340px;
+  width: 100%;
+  outline: none;
+  border-radius: 6px;
+}
+
+/* Thumbnail Section Preview */
+.thumbnail-preview-card {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  background: #0d0d0d;
+  border: 1px solid var(--border);
+  padding: 16px;
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+
+.thumbnail-img-box {
+  width: 220px;
+  aspect-ratio: 16 / 9;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #181820;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+  cursor: pointer;
+}
+
+.thumbnail-img-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.2s ease;
+}
+
+.thumbnail-img-box:hover img {
+  transform: scale(1.04);
+}
+
+.thumbnail-img-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.thumbnail-img-box:hover .thumbnail-img-overlay {
+  opacity: 1;
+}
+
+.thumbnail-meta {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Status Section in Master-Detail */
+.status-action-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: #0d0d0d;
+  border: 1px solid var(--border);
+  padding: 16px 20px;
+  border-radius: 8px;
+  flex-wrap: wrap;
+}
+
+.status-pill-completed {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: rgba(255, 122, 0, 0.15);
+  border: 1px solid var(--cta-orange);
+  color: var(--cta-orange);
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.status-pill-pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #f87171;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+/* --------------------------------------------------------------------------
+   2. KANBAN PIPELINE VIEW
+   -------------------------------------------------------------------------- */
+.kanban-board {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  width: 100%;
+  min-height: 600px;
+  align-items: start;
+}
+
+.kanban-col {
+  background: #111115;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 240px);
+  min-height: 520px;
+  transition: all 0.2s ease;
+}
+
+.kanban-col.drag-over {
+  border-color: var(--cta-orange);
+  background: #161622;
+  box-shadow: 0 0 14px rgba(255, 122, 0, 0.3);
+}
+
+.kanban-col-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #15151c;
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+}
+
+.kanban-col-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kanban-col-count {
+  background: #27272a;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.kanban-col-cards {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.kanban-card {
+  background: #16161c;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  cursor: grab;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  user-select: none;
+}
+
+.kanban-card:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+
+.kanban-card.dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+
+.kanban-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.kanban-card-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.kanban-card-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 5px;
+  overflow: hidden;
+  background: #09090b;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kanban-card-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.kanban-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* --------------------------------------------------------------------------
+   3. COMPACT TABLE VIEW WITH ACCORDION ROWS
+   -------------------------------------------------------------------------- */
+.compact-table tr.accordion-parent-row {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.compact-table tr.accordion-parent-row:hover {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.compact-table tr.accordion-parent-row.is-expanded {
+  background: rgba(255, 122, 0, 0.05);
+}
+
+.btn-accordion-toggle {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-accordion-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.accordion-parent-row.is-expanded .btn-accordion-toggle {
+  background: rgba(255, 122, 0, 0.2);
+  border-color: var(--cta-orange);
+  color: var(--cta-orange);
+}
+
+.accordion-drawer-row td {
+  padding: 0 !important;
+  background: #111116;
+  border-bottom: 2px solid var(--border);
+}
+
+.accordion-drawer-content {
+  padding: 18px 22px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  background: #111116;
+  border-left: 3px solid var(--cta-orange);
+  animation: accordionFade 0.2s ease-out;
+}
+
+@keyframes accordionFade {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+  .pipeline-master-detail {
+    flex-direction: column;
+  }
+  .md-left-sidebar {
+    width: 100%;
+    max-width: none;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    max-height: 320px;
+  }
+  .md-right-panel {
+    width: 100%;
+  }
+  .kanban-board {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .kanban-board {
+    grid-template-columns: 1fr;
+  }
+  .view-toggle-group {
+    width: 100%;
+    overflow-x: auto;
+  }
+}

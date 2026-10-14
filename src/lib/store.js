@@ -2356,6 +2356,13 @@ class SupabaseStore {
     return nextStatus;
   }
 
+  async setVideoStatus(videoId, targetStatus) {
+    const vid = this.state.videos.find((v) => v.id === videoId);
+    if (!vid) return false;
+    if (Boolean(vid.status) === Boolean(targetStatus)) return vid.status;
+    return this.toggleVideoStatus(videoId);
+  }
+
   // --- Pending Cell Detection Rule ---
   getCellStatus(video, columnKey) {
     const hasTitle = Boolean(video.title && video.title.trim());
