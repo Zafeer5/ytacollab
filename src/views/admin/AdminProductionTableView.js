@@ -123,8 +123,8 @@ function openKanbanVideoPreviewModal(video, currentChannel, navigate) {
               📝 Video Script
               ${
                 scriptStat.status === 'pending'
-                  ? '<span class="badge-pending" style="margin-left: 6px;">pending</span>'
-                  : '<span style="color: var(--success-text); font-size: 10.5px; margin-left: 6px;">✓ submitted</span>'
+                  ? '<span class="badge-pending" style="margin-left: 6px;">⏳ pending</span>'
+                  : '<span class="status-submitted" style="margin-left: 6px;">✓ submitted</span>'
               }
             </span>
             <button 
@@ -140,7 +140,7 @@ function openKanbanVideoPreviewModal(video, currentChannel, navigate) {
             video.script && video.script.trim()
               ? `<div class="preview-text-box">${escapeHtml(video.script)}</div>`
               : `<div style="padding: 12px; border: 1px dashed var(--border); border-radius: 6px; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
-                   <span class="badge-pending">pending</span> No script has been submitted for this video yet.
+                   <span class="badge-pending">⏳ pending</span> No script has been submitted for this video yet.
                  </div>`
           }
         </div>
@@ -152,8 +152,8 @@ function openKanbanVideoPreviewModal(video, currentChannel, navigate) {
               🎙️ Voiceover Audio Asset
               ${
                 voStat.status === 'pending'
-                  ? '<span class="badge-pending" style="margin-left: 6px;">pending</span>'
-                  : '<span style="color: var(--success-text); font-size: 10.5px; margin-left: 6px;">✓ submitted</span>'
+                  ? '<span class="badge-pending" style="margin-left: 6px;">⏳ pending</span>'
+                  : '<span class="status-submitted" style="margin-left: 6px;">✓ submitted</span>'
               }
             </span>
             ${
@@ -189,7 +189,7 @@ function openKanbanVideoPreviewModal(video, currentChannel, navigate) {
           `
               : `
             <div style="padding: 12px; border: 1px dashed var(--border); border-radius: 6px; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
-              <span class="badge-pending">pending</span> No voiceover file has been uploaded for this video.
+              <span class="badge-pending">⏳ pending</span> No voiceover file has been uploaded for this video.
             </div>
           `
           }
@@ -202,8 +202,8 @@ function openKanbanVideoPreviewModal(video, currentChannel, navigate) {
               🖼️ Thumbnail Asset
               ${
                 thumbStat.status === 'pending'
-                  ? '<span class="badge-pending" style="margin-left: 6px;">pending</span>'
-                  : '<span style="color: var(--success-text); font-size: 10.5px; margin-left: 6px;">✓ submitted</span>'
+                  ? '<span class="badge-pending" style="margin-left: 6px;">⏳ pending</span>'
+                  : '<span class="status-submitted" style="margin-left: 6px;">✓ submitted</span>'
               }
             </span>
             ${
@@ -257,7 +257,7 @@ function openKanbanVideoPreviewModal(video, currentChannel, navigate) {
           `
               : `
             <div style="padding: 12px; border: 1px dashed var(--border); border-radius: 6px; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
-              <span class="badge-pending">pending</span> Thumbnail preview is pending upload.
+              <span class="badge-pending">⏳ pending</span> Thumbnail preview is pending upload.
             </div>
           `
           }
@@ -270,8 +270,8 @@ function openKanbanVideoPreviewModal(video, currentChannel, navigate) {
               📋 SEO Meta Info / Description
               ${
                 metaStat.status === 'pending'
-                  ? '<span class="badge-pending" style="margin-left: 6px;">pending</span>'
-                  : '<span style="color: var(--success-text); font-size: 10.5px; margin-left: 6px;">✓ submitted</span>'
+                  ? '<span class="badge-pending" style="margin-left: 6px;">⏳ pending</span>'
+                  : '<span class="status-submitted" style="margin-left: 6px;">✓ submitted</span>'
               }
             </span>
             <button 
@@ -288,7 +288,7 @@ function openKanbanVideoPreviewModal(video, currentChannel, navigate) {
               ? `<div class="preview-text-box">${escapeHtml(video.metaInfo)}</div>`
               : `
             <div style="padding: 12px; border: 1px dashed var(--border); border-radius: 6px; font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
-              <span class="badge-pending">pending</span> No SEO meta description submitted yet.
+              <span class="badge-pending">⏳ pending</span> No SEO meta description submitted yet.
             </div>
           `
           }
@@ -511,16 +511,16 @@ export function renderAdminProductionTableView(container, navigate) {
                   `
                       : `
                     <div class="kanban-card-thumb" style="color: var(--text-muted); font-size: 11px;">
-                      <span class="badge-pending">Thumbnail Pending</span>
+                      <span class="badge-pending">⏳ Thumbnail Pending</span>
                     </div>
                   `
                   }
 
                   <div class="md-asset-dots">
-                    <span class="md-asset-dot ${scriptStat.status === 'pending' ? 'pending' : 'fulfilled'}">SCR</span>
-                    <span class="md-asset-dot ${voStat.status === 'pending' ? 'pending' : 'fulfilled'}">VO</span>
-                    <span class="md-asset-dot ${thumbStat.status === 'pending' ? 'pending' : 'fulfilled'}">THM</span>
-                    <span class="md-asset-dot ${metaStat.status === 'pending' ? 'pending' : 'fulfilled'}">MET</span>
+                    <span class="md-asset-dot ${scriptStat.status === 'pending' ? 'pending' : 'fulfilled'}">${scriptStat.status === 'pending' ? '⏳ SCR' : '✓ SCR'}</span>
+                    <span class="md-asset-dot ${voStat.status === 'pending' ? 'pending' : 'fulfilled'}">${voStat.status === 'pending' ? '⏳ VO' : '✓ VO'}</span>
+                    <span class="md-asset-dot ${thumbStat.status === 'pending' ? 'pending' : 'fulfilled'}">${thumbStat.status === 'pending' ? '⏳ THM' : '✓ THM'}</span>
+                    <span class="md-asset-dot ${metaStat.status === 'pending' ? 'pending' : 'fulfilled'}">${metaStat.status === 'pending' ? '⏳ MET' : '✓ MET'}</span>
                   </div>
 
                   <div class="kanban-card-footer">
@@ -586,7 +586,7 @@ export function renderAdminProductionTableView(container, navigate) {
           // Title
           const titleContent =
             titleStat.status === 'pending'
-              ? '<span class="badge-pending">pending</span>'
+              ? '<span class="badge-pending">⏳ pending</span>'
               : `
               <div class="cell-text-copy">
                 <span class="truncate-text" title="${escapeHtml(video.title)}">${escapeHtml(video.title)}</span>
@@ -597,7 +597,7 @@ export function renderAdminProductionTableView(container, navigate) {
           // Script
           const scriptContent =
             scriptStat.status === 'pending'
-              ? '<span class="badge-pending">pending</span>'
+              ? '<span class="badge-pending">⏳ pending</span>'
               : video.script
               ? `
                 <div class="cell-text-copy">
@@ -611,7 +611,7 @@ export function renderAdminProductionTableView(container, navigate) {
           const voHasValidUrl = Boolean(video.voiceover?.url && video.voiceover.url.startsWith('http'));
           const voContent =
             voStat.status === 'pending'
-              ? '<span class="badge-pending">pending</span>'
+              ? '<span class="badge-pending">⏳ pending</span>'
               : video.voiceover
               ? `
                 <div class="table-audio-cell">
@@ -642,7 +642,7 @@ export function renderAdminProductionTableView(container, navigate) {
           const thumbHasValidUrl = Boolean(video.thumbnail?.url && video.thumbnail.url.startsWith('http'));
           const thumbContent =
             thumbStat.status === 'pending'
-              ? '<span class="badge-pending">pending</span>'
+              ? '<span class="badge-pending">⏳ pending</span>'
               : video.thumbnail
               ? thumbHasValidUrl
                 ? `
@@ -663,7 +663,7 @@ export function renderAdminProductionTableView(container, navigate) {
           // Meta Info
           const metaContent =
             metaStat.status === 'pending'
-              ? '<span class="badge-pending">pending</span>'
+              ? '<span class="badge-pending">⏳ pending</span>'
               : video.metaInfo
               ? `
                 <div class="cell-text-copy">
